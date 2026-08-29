@@ -4,9 +4,9 @@ export default {
     const url=new URL(request.url),cors={'Access-Control-Allow-Origin':env.ALLOWED_ORIGIN||'*','Access-Control-Allow-Methods':'GET,OPTIONS','Access-Control-Allow-Headers':'Content-Type,Authorization','Cache-Control':'no-store'};
     if(request.method==='OPTIONS')return new Response(null,{headers:cors});
     try{
-      if(url.pathname==='/api/health')return json({ok:true,service:'investment-hub-worker',version:'2.1.0'},200,cors);
+      if(url.pathname==='/api/health')return json({ok:true,service:'investment-hub-worker',version:'2.2.0'},200,cors);
       const authError=authorize(request,env);if(authError)return json({error:authError},401,cors);
-      if(url.pathname==='/api/diagnostics')return json({ok:true,version:'2.1.0',secrets:{DASHBOARD_ACCESS_TOKEN:!!env.DASHBOARD_ACCESS_TOKEN,OKX_API_KEY:!!env.OKX_API_KEY,OKX_API_SECRET:!!env.OKX_API_SECRET,OKX_PASSPHRASE:!!env.OKX_PASSPHRASE,TWELVE_DATA_KEY:!!env.TWELVE_DATA_KEY}},200,cors);
+      if(url.pathname==='/api/diagnostics')return json({ok:true,version:'2.2.0',secrets:{DASHBOARD_ACCESS_TOKEN:!!env.DASHBOARD_ACCESS_TOKEN,OKX_API_KEY:!!env.OKX_API_KEY,OKX_API_SECRET:!!env.OKX_API_SECRET,OKX_PASSPHRASE:!!env.OKX_PASSPHRASE,TWELVE_DATA_KEY:!!env.TWELVE_DATA_KEY}},200,cors);
       if(url.pathname==='/api/okx/balance')return await okxBalance(env,cors);
       if(url.pathname==='/api/market/prices')return await marketPrices(url,env,cors);
       if(url.pathname==='/api/market/history')return await marketHistory(url,env,cors);
@@ -17,58 +17,111 @@ export default {
 
 async function okxBalance(env,cors){
   requireOkx(env);
-  const [trading,funding]=await Promise.all([
-    signedOkx(env,'/api/v5/account/balance'),
-    signedOkx(env,'/api/v5/asset/balances')
-  ]);
+
+  const trading=await signedOkx(env,'/api/v5/account/balance');
+  const funding=await signedOkx(env,'/api/v5/asset/balances');
+
+  // Savings/Earn is optional: some accounts/regions may not expose it.
+  let savings={data:[]};
+  try{savings=await signedOkx(env,'/api/v5/finance/savings/balance')}catch{}
+
   const map=new Map();
   const t=trading.data?.[0]||{};
+
   for(const d of t.details||[]){
-    const ccy=String(d.ccy||'').toUpperCase(),qty=n(d.eq||d.cashBal),usd=n(d.eqUsd||d.disEq);
+    const ccy=String(d.ccy||'').toUpperCase();
+    const qty=n(d.eq||d.cashBal);
+    const usd=n(d.eqUsd||d.disEq||d.eqUsd);
     if(!ccy||qty<=0)continue;
-    map.set(ccy,{symbol:ccy,name:ccy,qty,price:usd>0?usd/qty:0,usdValue:Math.max(0,usd),changePct:0,accountParts:{trading:qty,funding:0}});
+    map.set(ccy,{
+      symbol:ccy,name:ccy,qty,
+      price:usd>0?usd/qty:0,
+      usdValue:Math.max(0,usd),
+      changePct:0,
+      accountParts:{trading:qty,funding:0,savings:0},
+      valueParts:{tradingUsd:Math.max(0,usd),fundingUsd:0,savingsUsd:0}
+    });
   }
+
   for(const d of funding.data||[]){
-    const ccy=String(d.ccy||'').toUpperCase(),qty=n(d.bal);if(!ccy||qty<=0)continue;
-    const old=map.get(ccy)||{symbol:ccy,name:ccy,qty:0,price:0,usdValue:0,changePct:0,accountParts:{trading:0,funding:0}};
-    old.qty+=qty;old.accountParts.funding+=qty;map.set(ccy,old);
+    const ccy=String(d.ccy||'').toUpperCase();
+    const qty=n(d.bal||d.availBal);
+    if(!ccy||qty<=0)continue;
+    const old=map.get(ccy)||{
+      symbol:ccy,name:ccy,qty:0,price:0,usdValue:0,changePct:0,
+      accountParts:{trading:0,funding:0,savings:0},
+      valueParts:{tradingUsd:0,fundingUsd:0,savingsUsd:0}
+    };
+    old.qty+=qty; old.accountParts.funding+=qty; map.set(ccy,old);
   }
+
+  for(const d of savings.data||[]){
+    const ccy=String(d.ccy||'').toUpperCase();
+    const qty=n(d.amt||d.totalAmt||d.bal||d.amount);
+    if(!ccy||qty<=0)continue;
+    const old=map.get(ccy)||{
+      symbol:ccy,name:ccy,qty:0,price:0,usdValue:0,changePct:0,
+      accountParts:{trading:0,funding:0,savings:0},
+      valueParts:{tradingUsd:0,fundingUsd:0,savingsUsd:0}
+    };
+    old.qty+=qty; old.accountParts.savings+=qty; map.set(ccy,old);
+  }
+
   const holdings=[...map.values()];
   await Promise.all(holdings.map(async h=>{
     const ticker=await cryptoQuote(h.symbol,env).catch(()=>null);
     if(ticker&&ticker.price>0){
-      h.price=ticker.price;h.changePct=ticker.changePct;
-      // Funding value is priced with current market; trading eqUsd remains OKX account valuation where available.
-      const tradingQty=n(h.accountParts.trading),fundingQty=n(h.accountParts.funding);
-      const tradingValue=(tradingQty>0&&h.usdValue>0)?h.usdValue:tradingQty*h.price;
-      h.usdValue=tradingValue+fundingQty*h.price;
+      h.price=ticker.price; h.changePct=ticker.changePct;
     }else if(STABLE.has(h.symbol)){
-      h.price=1;h.usdValue=h.qty;h.changePct=0;
-    }else if(h.price>0){
-      h.usdValue=h.qty*h.price;
+      h.price=1;h.changePct=0;
     }
+
+    // Use OKX's own trading USD equity when supplied, and live OKX price for Funding/Savings.
+    const tradingQty=n(h.accountParts.trading), fundingQty=n(h.accountParts.funding), savingsQty=n(h.accountParts.savings);
+    const tradingUsd=n(h.valueParts.tradingUsd)>0?n(h.valueParts.tradingUsd):tradingQty*n(h.price);
+    const fundingUsd=fundingQty*n(h.price);
+    const savingsUsd=savingsQty*n(h.price);
+    h.valueParts={tradingUsd,fundingUsd,savingsUsd};
+    h.usdValue=tradingUsd+fundingUsd+savingsUsd;
   }));
-  const totalUsd=holdings.reduce((a,h)=>a+n(h.usdValue),0);
-  return json({holdings,totalUsd,tradingTotalEq:n(t.totalEq),ts:Date.now()},200,cors);
+
+  const breakdown={
+    tradingUsd:holdings.reduce((a,h)=>a+n(h.valueParts?.tradingUsd),0),
+    fundingUsd:holdings.reduce((a,h)=>a+n(h.valueParts?.fundingUsd),0),
+    savingsUsd:holdings.reduce((a,h)=>a+n(h.valueParts?.savingsUsd),0)
+  };
+  const totalUsd=breakdown.tradingUsd+breakdown.fundingUsd+breakdown.savingsUsd;
+
+  return json({
+    holdings,totalUsd,breakdown,
+    okxTradingTotalEq:n(t.totalEq),
+    ts:Date.now()
+  },200,cors);
 }
 
 async function marketPrices(url,env,cors){
   const stocks=(url.searchParams.get('stocks')||'').split(',').map(s=>cleanStock(s)).filter(Boolean).slice(0,30);
   const cryptoSymbols=(url.searchParams.get('crypto')||'').split(',').map(s=>s.trim().toUpperCase()).filter(Boolean).slice(0,50);
-  const out={stocks:{},crypto:{},sources:{stocks:env.TWELVE_DATA_KEY?'Twelve Data + fallback':'Stooq fallback',crypto:'OKX'}};
-  await Promise.all(cryptoSymbols.map(async s=>{const q=await cryptoQuote(s,env).catch(()=>null);if(q)out.crypto[s]=q}));
+  const out={stocks:{},crypto:{},sources:{stocks:'Twelve Data',crypto:'OKX'}};
+
+  await Promise.all(cryptoSymbols.map(async s=>{
+    const q=await cryptoQuote(s,env).catch(()=>null);
+    if(q)out.crypto[s]=q;
+  }));
+
   if(stocks.length){
-    let remaining=[...stocks];
-    if(env.TWELVE_DATA_KEY){
-      try{
-        const q=new URL('https://api.twelvedata.com/quote');q.searchParams.set('symbol',stocks.join(','));q.searchParams.set('apikey',env.TWELVE_DATA_KEY);
-        const r=await fetch(q),data=await r.json();if(r.ok&&data.status!=='error'){
-          for(const s of stocks){const item=stocks.length===1?data:data[s];if(item&&!item.code&&n(item.close)>0){out.stocks[s]={price:n(item.close),changePct:n(item.percent_change),source:'Twelve Data'}}}
-          remaining=stocks.filter(s=>!out.stocks[s]);
-        }
-      }catch{}
+    if(!env.TWELVE_DATA_KEY)return json({error:'TWELVE_DATA_KEY_REQUIRED'},503,cors);
+    const q=new URL('https://api.twelvedata.com/quote');
+    q.searchParams.set('symbol',stocks.join(','));
+    q.searchParams.set('apikey',env.TWELVE_DATA_KEY);
+    const r=await fetch(q),data=await r.json();
+    if(!r.ok||data.status==='error')return json({error:data.message||'Twelve Data request failed'},502,cors);
+    for(const s of stocks){
+      const item=stocks.length===1?data:data[s];
+      if(item&&!item.code&&n(item.close)>0){
+        out.stocks[s]={price:n(item.close),changePct:n(item.percent_change),source:'Twelve Data'};
+      }
     }
-    await Promise.all(remaining.map(async s=>{const q=await stooqQuote(s).catch(()=>null);if(q)out.stocks[s]=q}));
   }
   return json({...out,ts:Date.now()},200,cors);
 }
@@ -100,18 +153,19 @@ async function stooqQuote(symbol){
   const close=n(o.Close),open=n(o.Open);if(close<=0)throw new Error('No stock quote');return{price:close,changePct:open?(close-open)/open*100:0,source:'Stooq'}
 }
 async function stockHistory(symbol,range,env){
-  if(env.TWELVE_DATA_KEY){
-    try{
-      const cfg={1D:['5min',78],1W:['30min',100],1M:['1h',180],3M:['1day',90],1Y:['1day',365],ALL:['1week',520]}[range]||['1day',90],u=new URL('https://api.twelvedata.com/time_series');
-      u.searchParams.set('symbol',symbol);u.searchParams.set('interval',cfg[0]);u.searchParams.set('outputsize',String(cfg[1]));u.searchParams.set('apikey',env.TWELVE_DATA_KEY);
-      const r=await fetch(u),d=await r.json();if(r.ok&&d.status!=='error'&&Array.isArray(d.values)){return{source:'Twelve Data',points:d.values.map(x=>({ts:Date.parse(x.datetime),close:n(x.close)})).filter(x=>x.ts&&x.close>0).sort((a,b)=>a.ts-b.ts)}}
-    }catch{}
-  }
-  const now=new Date(),days={1D:7,1W:14,1M:40,3M:110,1Y:380,ALL:3650}[range]||40,start=new Date(now.getTime()-days*864e5),fmt=d=>`${d.getUTCFullYear()}${String(d.getUTCMonth()+1).padStart(2,'0')}${String(d.getUTCDate()).padStart(2,'0')}`;
-  const u=`https://stooq.com/q/d/l/?s=${encodeURIComponent(symbol.toLowerCase()+'.us')}&d1=${fmt(start)}&d2=${fmt(now)}&i=d`,r=await fetch(u,{headers:{'User-Agent':'Mozilla/5.0'}});
-  const text=await r.text(),lines=text.trim().split(/\r?\n/);if(lines.length<2)return{source:'Stooq',points:[]};const h=lines[0].split(',');
-  const pts=lines.slice(1).map(line=>{const v=line.split(','),o={};h.forEach((k,i)=>o[k]=v[i]);return{ts:Date.parse(o.Date+'T00:00:00Z'),close:n(o.Close)}}).filter(x=>x.ts&&x.close>0);
-  return{source:'Stooq',points:pts}
+  if(!env.TWELVE_DATA_KEY)throw new Error('TWELVE_DATA_KEY_REQUIRED');
+  const cfg={1D:['5min',78],1W:['30min',100],1M:['1h',180],3M:['1day',90],1Y:['1day',365],ALL:['1week',520]}[range]||['1day',90];
+  const u=new URL('https://api.twelvedata.com/time_series');
+  u.searchParams.set('symbol',symbol);
+  u.searchParams.set('interval',cfg[0]);
+  u.searchParams.set('outputsize',String(cfg[1]));
+  u.searchParams.set('apikey',env.TWELVE_DATA_KEY);
+  const r=await fetch(u),d=await r.json();
+  if(!r.ok||d.status==='error'||!Array.isArray(d.values))throw new Error(d.message||'Twelve Data history failed');
+  return{
+    source:'Twelve Data',
+    points:d.values.map(x=>({ts:Date.parse(x.datetime),close:n(x.close)})).filter(x=>x.ts&&x.close>0).sort((a,b)=>a.ts-b.ts)
+  };
 }
 function cleanStock(s){return String(s||'').trim().toUpperCase().replace(/\.US$/,'')}
 function requireOkx(env){for(const k of['OKX_API_KEY','OKX_API_SECRET','OKX_PASSPHRASE'])if(!env[k])throw new Error(`Missing ${k}`)}
