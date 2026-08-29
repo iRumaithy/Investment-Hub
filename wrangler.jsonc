@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "investment-hub",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-08-29",
+  "assets": {
+    "directory": "./",
+    "run_worker_first": ["/api/*"]
+  },
+  "vars": {
+    "OKX_API_BASE": "https://www.okx.com"
+  }
+}
