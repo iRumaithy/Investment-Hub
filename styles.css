@@ -23,3 +23,7 @@ body{touch-action:pan-y}
 .asset-ranges{overflow-x:auto;justify-content:flex-start}
 .asset-range{border:0;background:#f3efe5;color:#716b61;padding:8px 11px;border-radius:10px;font-size:11px}
 .asset-range.active{background:linear-gradient(135deg,#a9771d,#d6b75f);color:#fff}
+
+.chart-source{display:block;margin-top:6px;color:var(--muted);font-size:10px;line-height:1.5}
+.range-row{overflow-x:auto;justify-content:flex-start;scrollbar-width:none}
+.range-row::-webkit-scrollbar{display:none}

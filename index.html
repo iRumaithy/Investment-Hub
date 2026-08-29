@@ -54,11 +54,12 @@
             <div><span class="muted">اليوم</span><strong id="todayPnl">—</strong></div>
             <div><span class="muted">إجمالي العائد</span><strong id="totalPnl">—</strong></div>
           </div>
-          <div class="chart-stage"><svg id="portfolioChart" class="sparkline" viewBox="0 0 640 170" role="img" aria-label="أداء المحفظة الفعلي المسجل"></svg><div id="portfolioChartEmpty" class="chart-empty">يبدأ الرسم من أول مزامنة فعلية للمحفظة.</div><div id="portfolioTooltip" class="chart-tooltip" hidden></div></div>
+          <div class="chart-stage"><svg id="portfolioChart" class="sparkline" viewBox="0 0 640 170" role="img" aria-label="أداء المحفظة الفعلي المسجل"></svg><div id="portfolioChartEmpty" class="chart-empty">يبدأ الرسم من أول مزامنة فعلية للمحفظة.</div><div id="portfolioTooltip" class="chart-tooltip" hidden></div></div><small id="portfolioChartSource" class="chart-source">القيمة الفعلية الحالية من OKX · الرسم التاريخي يعكس قيمة الأصول الحالية عبر الفترة</small>
           <div class="range-row" role="group" aria-label="الفترة الزمنية">
-            <button class="range active" data-range="1M" type="button">1M</button>
+            <button class="range active" data-range="1D" type="button">1D</button>
+            <button class="range" data-range="1W" type="button">1W</button>
+            <button class="range" data-range="1M" type="button">1M</button>
             <button class="range" data-range="3M" type="button">3M</button>
-            <button class="range" data-range="6M" type="button">6M</button>
             <button class="range" data-range="1Y" type="button">1Y</button>
             <button class="range" data-range="ALL" type="button">ALL</button>
           </div>
@@ -203,7 +204,7 @@
       </section>
     </main>
 
-    <footer><span>محفظتي Investment Hub</span><span>v2.2.1</span></footer>
+    <footer><span>محفظتي Investment Hub</span><span>v2.3.0</span></footer>
   </div>
 
   <dialog id="assetDialog">
