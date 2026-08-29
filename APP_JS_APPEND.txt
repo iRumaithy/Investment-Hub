@@ -1,0 +1,3 @@
+
+// v2 auto-sync: settings/state are already persisted in localStorage by render()/save().
+window.addEventListener('load',()=>{setTimeout(async()=>{try{if(state?.settings?.apiBase){await syncOkx();try{await syncMarket()}catch{}}}catch{}},700)});
