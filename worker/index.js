@@ -4,9 +4,9 @@ export default {
     const url=new URL(request.url),cors={'Access-Control-Allow-Origin':env.ALLOWED_ORIGIN||'*','Access-Control-Allow-Methods':'GET,OPTIONS','Access-Control-Allow-Headers':'Content-Type,Authorization','Cache-Control':'no-store'};
     if(request.method==='OPTIONS')return new Response(null,{headers:cors});
     try{
-      if(url.pathname==='/api/health')return json({ok:true,service:'investment-hub-worker',version:'2.2.0'},200,cors);
+      if(url.pathname==='/api/health')return json({ok:true,service:'investment-hub-worker',version:'2.2.1'},200,cors);
       const authError=authorize(request,env);if(authError)return json({error:authError},401,cors);
-      if(url.pathname==='/api/diagnostics')return json({ok:true,version:'2.2.0',secrets:{DASHBOARD_ACCESS_TOKEN:!!env.DASHBOARD_ACCESS_TOKEN,OKX_API_KEY:!!env.OKX_API_KEY,OKX_API_SECRET:!!env.OKX_API_SECRET,OKX_PASSPHRASE:!!env.OKX_PASSPHRASE,TWELVE_DATA_KEY:!!env.TWELVE_DATA_KEY}},200,cors);
+      if(url.pathname==='/api/diagnostics')return json({ok:true,version:'2.2.1',secrets:{DASHBOARD_ACCESS_TOKEN:!!env.DASHBOARD_ACCESS_TOKEN,OKX_API_KEY:!!env.OKX_API_KEY,OKX_API_SECRET:!!env.OKX_API_SECRET,OKX_PASSPHRASE:!!env.OKX_PASSPHRASE,TWELVE_DATA_KEY:!!env.TWELVE_DATA_KEY}},200,cors);
       if(url.pathname==='/api/okx/balance')return await okxBalance(env,cors);
       if(url.pathname==='/api/market/prices')return await marketPrices(url,env,cors);
       if(url.pathname==='/api/market/history')return await marketHistory(url,env,cors);
@@ -19,10 +19,12 @@ async function okxBalance(env,cors){
   requireOkx(env);
 
   const trading=await signedOkx(env,'/api/v5/account/balance');
+  await sleep(250);
   const funding=await signedOkx(env,'/api/v5/asset/balances');
 
-  // Savings/Earn is optional: some accounts/regions may not expose it.
+  // Savings/Earn is optional and requested after a pause to avoid a burst of private API calls.
   let savings={data:[]};
+  await sleep(250);
   try{savings=await signedOkx(env,'/api/v5/finance/savings/balance')}catch{}
 
   const map=new Map();
@@ -136,13 +138,13 @@ async function marketHistory(url,env,cors){
 
 async function cryptoQuote(symbol,env){
   if(STABLE.has(symbol))return{price:1,changePct:0,source:'OKX'};
-  const instId=`${symbol}-USDT`,host=env.OKX_API_BASE||'https://www.okx.com',r=await fetch(`${host}/api/v5/market/ticker?instId=${encodeURIComponent(instId)}`);
+  const instId=`${symbol}-USDT`,host=env.OKX_API_BASE||'https://openapi.okx.com',r=await fetch(`${host}/api/v5/market/ticker?instId=${encodeURIComponent(instId)}`);
   const d=await r.json(),x=d.data?.[0];if(!r.ok||d.code!=='0'||!x)throw new Error('OKX ticker unavailable');
   const last=n(x.last),open=n(x.open24h),changePct=open?(last-open)/open*100:0;return{price:last,changePct,source:'OKX'}
 }
 async function cryptoHistory(symbol,range,env){
   if(STABLE.has(symbol))return{source:'OKX',points:[{ts:Date.now()-864e5,close:1},{ts:Date.now(),close:1}]};
-  const cfg={'1D':['5m',288],'1W':['1H',168],'1M':['4H',180],'3M':['1D',90],'1Y':['1D',300],'ALL':['1W',300]}[range]||['4H',180],host=env.OKX_API_BASE||'https://www.okx.com';
+  const cfg={'1D':['5m',288],'1W':['1H',168],'1M':['4H',180],'3M':['1D',90],'1Y':['1D',300],'ALL':['1W',300]}[range]||['4H',180],host=env.OKX_API_BASE||'https://openapi.okx.com';
   const u=new URL(host+'/api/v5/market/candles');u.searchParams.set('instId',`${symbol}-USDT`);u.searchParams.set('bar',cfg[0]);u.searchParams.set('limit',String(cfg[1]));
   const r=await fetch(u),d=await r.json();if(!r.ok||d.code!=='0')throw new Error(d.msg||'تعذر تحميل تاريخ OKX');
   return{source:'OKX',points:(d.data||[]).map(x=>({ts:n(x[0]),close:n(x[4])})).filter(x=>x.close>0).sort((a,b)=>a.ts-b.ts)}
@@ -170,9 +172,62 @@ async function stockHistory(symbol,range,env){
 function cleanStock(s){return String(s||'').trim().toUpperCase().replace(/\.US$/,'')}
 function requireOkx(env){for(const k of['OKX_API_KEY','OKX_API_SECRET','OKX_PASSPHRASE'])if(!env[k])throw new Error(`Missing ${k}`)}
 async function signedOkx(env,path){
-  const ts=new Date().toISOString(),sign=await hmacBase64(env.OKX_API_SECRET,ts+'GET'+path),host=env.OKX_API_BASE||'https://www.okx.com',r=await fetch(host+path,{headers:{'OK-ACCESS-KEY':env.OKX_API_KEY,'OK-ACCESS-SIGN':sign,'OK-ACCESS-TIMESTAMP':ts,'OK-ACCESS-PASSPHRASE':env.OKX_PASSPHRASE,'Content-Type':'application/json'}});
-  const d=await r.json();if(!r.ok||d.code!=='0')throw new Error(d.msg||`OKX HTTP ${r.status}`);return d
+  const hosts=[env.OKX_API_BASE,'https://openapi.okx.com','https://www.okx.com'].filter(Boolean);
+  const unique=[...new Set(hosts)];
+  let lastError='OKX request failed';
+
+  for(let h=0;h<unique.length;h++){
+    const host=unique[h];
+    for(let attempt=0;attempt<2;attempt++){
+      if(attempt)await sleep(1200);
+      const ts=new Date().toISOString();
+      const sign=await hmacBase64(env.OKX_API_SECRET,ts+'GET'+path);
+      let r;
+      try{
+        r=await fetch(host+path,{
+          headers:{
+            'OK-ACCESS-KEY':env.OKX_API_KEY,
+            'OK-ACCESS-SIGN':sign,
+            'OK-ACCESS-TIMESTAMP':ts,
+            'OK-ACCESS-PASSPHRASE':env.OKX_PASSPHRASE,
+            'Content-Type':'application/json',
+            'Accept':'application/json'
+          }
+        });
+      }catch(e){
+        lastError=`تعذر الاتصال بـ OKX عبر ${host}`;
+        continue;
+      }
+
+      const text=await r.text();
+      const contentType=r.headers.get('content-type')||'';
+      let d=null;
+      if(contentType.includes('application/json') || text.trim().startsWith('{') || text.trim().startsWith('[')){
+        try{d=JSON.parse(text)}catch{}
+      }
+
+      if(d){
+        if(r.ok && d.code==='0')return d;
+        lastError=d.msg||`OKX HTTP ${r.status}`;
+        // OKX-side rate limit / transient errors: retry once.
+        if(r.status===429 || String(d.code)==='50011' || String(d.code)==='50061')continue;
+        throw new Error(lastError);
+      }
+
+      // Non-JSON edge response, including Cloudflare-style error code 1015.
+      const compact=text.replace(/\s+/g,' ').trim().slice(0,220);
+      if(r.status===429 || /1015|rate limit|temporarily/i.test(compact)){
+        lastError='OKX حدّ مؤقتًا من عدد الطلبات (1015). سيتم إعادة المحاولة تلقائيًا.';
+        continue;
+      }
+
+      lastError=`OKX أعاد استجابة غير متوقعة (${r.status})`;
+      if(compact)lastError+=`: ${compact.slice(0,120)}`;
+    }
+  }
+  throw new Error(lastError);
 }
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
 async function hmacBase64(secret,text){const enc=new TextEncoder(),key=await crypto.subtle.importKey('raw',enc.encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']),sig=await crypto.subtle.sign('HMAC',key,enc.encode(text));let s='';for(const b of new Uint8Array(sig))s+=String.fromCharCode(b);return btoa(s)}
 function authorize(request,env){if(!env.DASHBOARD_ACCESS_TOKEN)return'Missing DASHBOARD_ACCESS_TOKEN';return(request.headers.get('Authorization')||'')===`Bearer ${env.DASHBOARD_ACCESS_TOKEN}`?'':'Unauthorized'}
 function n(v){const x=Number(v);return Number.isFinite(x)?x:0}
