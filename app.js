@@ -1,9 +1,9 @@
 (() => {
   'use strict';
-  const AED_RATE=3.6725,STORAGE_KEY='investmentHub_v1',APP_VERSION='2.3.0';
+  const AED_RATE=3.6725,STORAGE_KEY='investmentHub_v1',APP_VERSION='2.3.1';
   const DEFAULT_API_BASE=/^https?:$/.test(location.protocol)?location.origin:'';
   const OLD_DEMO_IDS=new Set(['s1','s2','s3','c1','c2','c3','w1','w2']);
-  const POLL_MS=30000;
+  const POLL_MS=60000;
   const defaultState={
     dataVersion:APP_VERSION,
     settings:{apiBase:DEFAULT_API_BASE,accessToken:'',baseCurrency:'AED'},
@@ -112,21 +112,62 @@
 
   async function syncAll(silent=false){try{await syncOkx(silent)}catch{}try{await syncMarket(silent)}catch{}}
 
+  const OKX_PUBLIC_BASES=['https://openapi.okx.com','https://www.okx.com'];
+  async function okxPublic(path){
+    let last='تعذر تحميل بيانات OKX';
+    for(const base of OKX_PUBLIC_BASES){
+      try{
+        const r=await fetch(base+path,{headers:{Accept:'application/json'},cache:'no-store'});
+        const text=await r.text();let d=null;try{d=JSON.parse(text)}catch{}
+        if(d&&r.ok&&d.code==='0')return d;
+        if(d){last=d.msg||`OKX HTTP ${r.status}`;continue}
+        if(r.status===429||/1015|rate limit/i.test(text)){last='OKX حدّ مؤقتًا من بيانات السوق. أعد المحاولة بعد لحظات.';continue}
+        last=`OKX أعاد استجابة غير متوقعة (${r.status})`;
+      }catch(e){last=e?.message||last}
+    }
+    throw new Error(last);
+  }
+  async function directCryptoHistory(symbol,range){
+    if(['USDT','USDC','USD'].includes(symbol)){
+      const now=Date.now(),cfg={'1D':[288,300000],'1W':[168,3600000],'1M':[180,14400000],'3M':[90,86400000],'1Y':[300,86400000],'ALL':[300,604800000]}[range]||[180,14400000];
+      return Array.from({length:cfg[0]},(_,i)=>({ts:now-(cfg[0]-1-i)*cfg[1],close:1}));
+    }
+    const cfg={'1D':['5m',288],'1W':['1H',168],'1M':['4H',180],'3M':['1D',90],'1Y':['1D',300],'ALL':['1W',300]}[range]||['4H',180];
+    const d=await okxPublic(`/api/v5/market/history-candles?instId=${encodeURIComponent(symbol+'-USDT')}&bar=${encodeURIComponent(cfg[0])}&limit=${cfg[1]}`);
+    return (d.data||[]).map(x=>({ts:num(x[0]),close:num(x[4])})).filter(x=>x.ts&&x.close>0).sort((a,b)=>a.ts-b.ts);
+  }
+
   async function loadMainChart(range,quiet=false){
     state.range=range;save();const req=++mainChartRequest;
-    const crypto=state.holdings.filter(h=>h.type==='crypto'&&num(h.qty)>0&&h.symbol!=='AED').map(h=>`${h.symbol}:${h.qty}`).join(',');
-    if(!crypto){$('portfolioChart').innerHTML='';$('portfolioChartEmpty').style.display='grid';$('portfolioChartEmpty').textContent='يظهر الرسم بعد مزامنة أصول OKX.';return}
-    $('portfolioChartEmpty').style.display='grid';$('portfolioChartEmpty').textContent='جاري تحميل الرسم الفعلي…';
+    const assets=state.holdings.filter(h=>h.type==='crypto'&&num(h.qty)>0&&h.symbol!=='AED');
+    if(!assets.length){$('portfolioChart').innerHTML='';$('portfolioChartEmpty').style.display='grid';$('portfolioChartEmpty').textContent='يظهر الرسم بعد مزامنة أصول OKX.';return}
+    $('portfolioChartEmpty').style.display='grid';$('portfolioChartEmpty').textContent='جاري تحميل الرسم من OKX مباشرة…';
     try{
-      const d=await api(`/api/portfolio/history?range=${encodeURIComponent(range)}&crypto=${encodeURIComponent(crypto)}`);
+      const series=[];
+      for(const h of assets.slice(0,12)){
+        try{const pts=await directCryptoHistory(h.symbol,range);if(pts.length)series.push({qty:num(h.qty),points:pts})}catch{}
+      }
       if(req!==mainChartRequest)return;
-      const pts=(d.points||[]).map(x=>({ts:num(x.ts),value:num(x.close)})).filter(x=>x.ts&&x.value>0);
-      if(pts.length<2){$('portfolioChart').innerHTML='';$('portfolioChartEmpty').textContent='لا تتوفر نقاط كافية لهذه الفترة.';return}
+      if(!series.length)throw new Error('تعذر تحميل تاريخ أسعار OKX مباشرة.');
+      const maxLen=Math.max(...series.map(s=>s.points.length)),pts=[];
+      for(let i=0;i<maxLen;i++){
+        let value=0,ts=0,used=0;
+        for(const s of series){
+          const p=s.points[Math.max(0,s.points.length-maxLen+i)];
+          if(p){value+=num(p.close)*s.qty;ts=Math.max(ts,p.ts);used++}
+        }
+        if(used&&ts)pts.push({ts,value});
+      }
+      if(pts.length<2)throw new Error('لا تتوفر نقاط تاريخية كافية.');
       $('portfolioChartEmpty').style.display='none';drawSeries($('portfolioChart'),pts,$('portfolioTooltip'),170);
-      $('portfolioChartSource').textContent='OKX · قيمة تاريخية تقريبية للمراكز الحالية؛ القيمة الحالية وPnL من حساب OKX مباشرة.';
-      const first=pts[0].value,last=pts.at(-1).value,dayPnl=last-first,dayPct=first?dayPnl/first*100:0;
-      $('todayPnl').textContent=`${money(Math.abs(dayPnl))} · ${pct(dayPct)}`;$('todayPnl').className=dayPnl>=0?'positive':'negative';
-    }catch(e){if(req!==mainChartRequest)return;$('portfolioChart').innerHTML='';$('portfolioChartEmpty').style.display='grid';$('portfolioChartEmpty').textContent=e.message||'تعذر تحميل الرسم.';if(!quiet)toast(e.message)}
+      $('portfolioChartSource').textContent='OKX مباشر من جهازك · القيمة الحالية وPnL من حساب OKX الخاص.';
+      const first=pts[0].value,last=pts.at(-1).value,move=last-first,movePct=first?move/first*100:0;
+      $('todayPnl').textContent=`${money(Math.abs(move))} · ${pct(movePct)}`;$('todayPnl').className=move>=0?'positive':'negative';
+    }catch(e){
+      if(req!==mainChartRequest)return;
+      $('portfolioChart').innerHTML='';$('portfolioChartEmpty').style.display='grid';$('portfolioChartEmpty').textContent=e.message||'تعذر تحميل الرسم.';
+      if(!quiet)toast(e.message);
+    }
   }
 
   function drawSeries(svg,points,tooltip,height){
@@ -139,11 +180,17 @@
   }
 
   async function openAssetChart(h,range='1D'){
-    currentChartAsset=h;currentAssetRange=range;$('assetChartTitle').textContent=`${h.symbol} · ${h.name||h.symbol}`;$('assetChartPrice').textContent=moneyUsd(h.price);$('assetChartChange').textContent=h.pnlRatio===null?'—':pct(h.pnlRatio);$('assetChartChange').className=h.pnlRatio!==null&&num(h.pnlRatio)>=0?'positive':'negative';$('assetChart').innerHTML='';$('assetChartEmpty').style.display='grid';$('assetChartEmpty').textContent='جاري تحميل بيانات OKX…';$('chartDialog').showModal();$$('.asset-range').forEach(b=>b.classList.toggle('active',b.dataset.assetRange===range));
+    currentChartAsset=h;currentAssetRange=range;$('assetChartTitle').textContent=`${h.symbol} · ${h.name||h.symbol}`;$('assetChartPrice').textContent=moneyUsd(h.price);$('assetChartChange').textContent=h.pnlRatio===null?'—':pct(h.pnlRatio);$('assetChartChange').className=h.pnlRatio!==null&&num(h.pnlRatio)>=0?'positive':'negative';$('assetChart').innerHTML='';$('assetChartEmpty').style.display='grid';$('assetChartEmpty').textContent='جاري تحميل بيانات السوق…';$('chartDialog').showModal();$$('.asset-range').forEach(b=>b.classList.toggle('active',b.dataset.assetRange===range));
     try{
-      const d=await api(`/api/market/history?type=${encodeURIComponent(h.type)}&symbol=${encodeURIComponent(h.symbol)}&range=${encodeURIComponent(range)}`),pts=(d.points||[]).map(x=>({ts:num(x.ts),value:num(x.close)})).filter(x=>x.ts&&x.value>0);
+      let pts=[],source='';
+      if(h.type==='crypto'){
+        pts=(await directCryptoHistory(h.symbol,range)).map(x=>({ts:x.ts,value:x.close}));source='OKX مباشر';
+      }else{
+        const d=await api(`/api/market/history?type=stock&symbol=${encodeURIComponent(h.symbol)}&range=${encodeURIComponent(range)}`);pts=(d.points||[]).map(x=>({ts:num(x.ts),value:num(x.close)}));source=d.source||'Twelve Data';
+      }
+      pts=pts.filter(x=>x.ts&&x.value>0);
       if(pts.length<2){$('assetChartEmpty').textContent='لا تتوفر نقاط تاريخية كافية.';return}
-      $('assetChartEmpty').style.display='none';drawSeries($('assetChart'),pts,$('assetTooltip'),250);$('assetChartSource').textContent=`المصدر: ${d.source||'OKX'} · ${pts.length} نقطة`;const first=pts[0].value,last=pts.at(-1).value,change=first?(last-first)/first*100:0;$('assetChartPrice').textContent=moneyUsd(last);$('assetChartChange').textContent=pct(change);$('assetChartChange').className=change>=0?'positive':'negative';
+      $('assetChartEmpty').style.display='none';drawSeries($('assetChart'),pts,$('assetTooltip'),250);$('assetChartSource').textContent=`المصدر: ${source} · ${pts.length} نقطة`;const first=pts[0].value,last=pts.at(-1).value,change=first?(last-first)/first*100:0;$('assetChartPrice').textContent=moneyUsd(last);$('assetChartChange').textContent=pct(change);$('assetChartChange').className=change>=0?'positive':'negative';
     }catch(e){$('assetChart').innerHTML='';$('assetChartEmpty').style.display='grid';$('assetChartEmpty').textContent=e.message||'تعذر تحميل الرسم.';$('assetChartSource').textContent=''}
   }
 
