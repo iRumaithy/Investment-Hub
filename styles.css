@@ -27,18 +27,7 @@ body{touch-action:pan-y}
 .chart-source{display:block;margin-top:6px;color:var(--muted);font-size:10px;line-height:1.5}
 .range-row{overflow-x:auto;justify-content:flex-start;scrollbar-width:none}
 .range-row::-webkit-scrollbar{display:none}
-/* v2.4.0 addon - append to styles.css only if desired */
-.xtb-v240-guide{
-  display:flex;
-  flex-direction:column;
-  gap:7px;
-  padding:12px;
-  border:1px solid #e4d6b7;
-  border-radius:14px;
-  background:#fffaf0;
-  color:#70685c;
-  font-size:11px;
-  line-height:1.55;
-}
-.xtb-v240-guide strong{color:#9d701d;font-size:12px}
-.asset-value small{direction:ltr;text-align:left;font-variant-numeric:tabular-nums}
+
+/* v2.4.1: PnL amount + percentage on one line */
+.asset-value small{direction:ltr;unicode-bidi:isolate;white-space:nowrap;font-variant-numeric:tabular-nums}
+@media(max-width:430px){.asset-value small{font-size:11px}}

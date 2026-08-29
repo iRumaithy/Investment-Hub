@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const AED_RATE=3.6725,STORAGE_KEY='investmentHub_v1',APP_VERSION='2.3.1';
+  const AED_RATE=3.6725,STORAGE_KEY='investmentHub_v1',APP_VERSION='2.4.1';
   const DEFAULT_API_BASE=/^https?:$/.test(location.protocol)?location.origin:'';
   const OLD_DEMO_IDS=new Set(['s1','s2','s3','c1','c2','c3','w1','w2']);
   const POLL_MS=60000;
@@ -17,9 +17,9 @@
       const raw=localStorage.getItem(STORAGE_KEY);if(!raw)return clone(defaultState);
       const p=JSON.parse(raw),s={...clone(defaultState),...p,settings:{...defaultState.settings,...(p.settings||{})}};
       if(s.dataVersion!==APP_VERSION){
-        s.holdings=(s.holdings||[]).filter(x=>x.type!=='stock'&&!OLD_DEMO_IDS.has(x.id));
+        s.holdings=(s.holdings||[]).filter(x=>!OLD_DEMO_IDS.has(x.id));
         s.watchlist=(s.watchlist||[]).filter(x=>!OLD_DEMO_IDS.has(x.id));
-        s.xtbImportedAt=null;s.range='1D';s.dataVersion=APP_VERSION;
+        s.range=s.range||'1D';s.dataVersion=APP_VERSION;
       }
       return s;
     }catch{return clone(defaultState)}
@@ -28,7 +28,8 @@
   const save=()=>localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
   const num=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
   const esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-  const moneyUsd=v=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:Math.abs(v)>=1000?2:2}).format(v||0);
+  const moneyUsd=v=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(v||0);
+  const signedMoneyUsd=v=>v===null||v===undefined?'—':`${num(v)>=0?'+':'-'}${moneyUsd(Math.abs(num(v)))}`;
   const money=(v,c=state.settings.baseCurrency)=>{const a=c==='AED'?v*AED_RATE:v;return new Intl.NumberFormat('en-US',{style:'currency',currency:c,maximumFractionDigits:Math.abs(a)>=1000?0:2}).format(a||0)};
   const pct=v=>v===null||v===undefined?'—':`${num(v)>=0?'+':''}${num(v).toFixed(2)}%`;
   const valueOf=h=>num(h.usdValue)>0?num(h.usdValue):num(h.qty)*num(h.price);
@@ -51,8 +52,8 @@
     const pnlUsd=pnlKnown?num(h.pnl):null;
     return `<article class="asset-item" data-id="${esc(h.id)}">
       <div class="asset-main"><div class="asset-icon">${esc((h.symbol||'?').slice(0,4))}</div><div class="asset-title"><strong>${esc(h.name||h.symbol)}</strong><span>${esc(h.symbol)} · ${esc(h.source||h.type)}</span></div></div>
-      <div class="asset-value"><strong>${money(valueOf(h))}</strong><small class="${pnlRatioKnown?(num(h.pnlRatio)>=0?'positive':'negative'):''}">${pnlRatioKnown?pct(h.pnlRatio):'—'}</small></div>
-      <div class="asset-meta">${num(h.qty).toLocaleString('en-US',{maximumFractionDigits:8})} × ${moneyUsd(h.price)}${pnlKnown?` · PnL ${pnlUsd>=0?'+':''}${moneyUsd(pnlUsd)}`:''}</div>
+      <div class="asset-value"><strong>${money(valueOf(h))}</strong><small class="${(pnlKnown||pnlRatioKnown)?((pnlKnown?num(h.pnl):num(h.pnlRatio))>=0?'positive':'negative'):''}">${pnlKnown&&pnlRatioKnown?`${signedMoneyUsd(pnlUsd)} (${pct(h.pnlRatio)})`:pnlKnown?signedMoneyUsd(pnlUsd):pnlRatioKnown?pct(h.pnlRatio):'—'}</small></div>
+      <div class="asset-meta">${num(h.qty).toLocaleString('en-US',{maximumFractionDigits:8})} × ${moneyUsd(h.price)}</div>
       <div class="asset-actions"><button class="asset-action" type="button" data-action="chart">الرسم البياني</button>${removable?'<button class="asset-action" type="button" data-action="remove">حذف</button>':''}</div>
     </article>`;
   }
@@ -61,7 +62,7 @@
     const t=totals();
     $('totalValue').textContent=money(t.total);$('totalUsd').textContent=state.settings.baseCurrency==='AED'?moneyUsd(t.total):money(t.total,'AED');
     const knownPnl=state.okxTotalPnl!==null&&state.okxTotalPnl!==undefined;
-    $('totalPnl').textContent=knownPnl?`${money(Math.abs(state.okxTotalPnl))} · ${pct(state.okxTotalPnlRatio)}`:'—';
+    $('totalPnl').textContent=knownPnl?`${state.settings.baseCurrency==='AED'?(num(state.okxTotalPnl)>=0?'+':'-')+money(Math.abs(state.okxTotalPnl)):signedMoneyUsd(state.okxTotalPnl)} (${pct(state.okxTotalPnlRatio)})`:'—';
     $('totalPnl').className=knownPnl?(num(state.okxTotalPnl)>=0?'positive':'negative'):'';
     $('todayPnl').textContent='—';$('todayPnl').className='';
     $('stocksValue').textContent=money(t.stocks);$('stocksPct').textContent=`${t.total?t.stocks/t.total*100:0}% من المحفظة`;
@@ -76,7 +77,7 @@
   function renderPortfolio(){const f=document.querySelector('.filter.active')?.dataset.filter||'all',a=state.holdings.filter(h=>f==='all'||h.type===f).sort((x,y)=>valueOf(y)-valueOf(x));$('portfolioList').innerHTML=a.length?a.map(h=>assetHtml(h,true)).join(''):'<div class="empty">لا توجد أصول فعلية في هذا التصنيف.</div>'}
   function renderWatch(){$('watchList').innerHTML=state.watchlist.length?state.watchlist.map(w=>assetHtml({...w,qty:1,usdValue:w.price,source:'Watchlist'})).join(''):'<div class="empty">قائمة المراقبة فارغة.</div>'}
   function renderAllocation(){const t=totals(),s=t.total?t.stocks/t.total*100:0,c=t.total?(state.okxAccountTotalUsd||t.crypto)/t.total*100:0;$('allocationDonut').style.background=t.total?`conic-gradient(var(--gold) 0 ${s}%,#8b8b88 ${s}% ${Math.min(100,s+c)}%,#ebe7dd ${Math.min(100,s+c)}% 100%)`:'#eeeae2';$('allocationLegend').innerHTML=`<div class="legend-row"><i class="legend-dot" style="background:var(--gold)"></i><span>أسهم XTB</span><span>${s.toFixed(1)}%</span></div><div class="legend-row"><i class="legend-dot" style="background:#8b8b88"></i><span>Crypto OKX</span><span>${c.toFixed(1)}%</span></div>`}
-  function renderAnalytics(){const sorted=[...state.holdings].sort((a,b)=>valueOf(b)-valueOf(a));$('analyticsCards').innerHTML=`<article class="metric-card"><span>إجمالي PnL من OKX</span><strong class="${num(state.okxTotalPnl)>=0?'positive':'negative'}">${state.okxTotalPnl===null?'—':money(state.okxTotalPnl)}</strong></article><article class="metric-card"><span>نسبة PnL</span><strong>${pct(state.okxTotalPnlRatio)}</strong></article><article class="metric-card"><span>قيمة المحفظة</span><strong>${money(totals().total)}</strong></article><article class="metric-card"><span>أكبر أصل</span><strong>${esc(sorted[0]?.symbol||'—')}</strong></article>`;const max=Math.max(1,...sorted.map(valueOf));$('largestPositions').innerHTML=sorted.length?sorted.slice(0,6).map(h=>`<div class="bar-row"><strong>${esc(h.symbol)}</strong><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,valueOf(h)/max*100)}%"></div></div><span>${money(valueOf(h))}</span></div>`).join(''):'<div class="empty">لا توجد بيانات.</div>';$('performanceList').innerHTML=state.holdings.length?state.holdings.slice(0,6).map(h=>`<div class="bar-row"><strong>${esc(h.symbol)}</strong><div class="bar-track"><div class="bar-fill ${h.pnlRatio!==null&&num(h.pnlRatio)>=0?'gain':'loss'}" style="width:${h.pnlRatio===null?0:Math.min(100,Math.max(3,Math.abs(num(h.pnlRatio))*3))}%"></div></div><span class="${h.pnlRatio!==null&&num(h.pnlRatio)>=0?'positive':'negative'}">${pct(h.pnlRatio)}</span></div>`).join(''):'<div class="empty">لا توجد بيانات.</div>'}
+  function renderAnalytics(){const sorted=[...state.holdings].sort((a,b)=>valueOf(b)-valueOf(a));$('analyticsCards').innerHTML=`<article class="metric-card"><span>إجمالي PnL من OKX</span><strong class="${num(state.okxTotalPnl)>=0?'positive':'negative'}">${state.okxTotalPnl===null?'—':money(state.okxTotalPnl)}</strong></article><article class="metric-card"><span>نسبة PnL</span><strong>${pct(state.okxTotalPnlRatio)}</strong></article><article class="metric-card"><span>قيمة المحفظة</span><strong>${money(totals().total)}</strong></article><article class="metric-card"><span>أكبر أصل</span><strong>${esc(sorted[0]?.symbol||'—')}</strong></article>`;const max=Math.max(1,...sorted.map(valueOf));$('largestPositions').innerHTML=sorted.length?sorted.slice(0,6).map(h=>`<div class="bar-row"><strong>${esc(h.symbol)}</strong><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,valueOf(h)/max*100)}%"></div></div><span>${money(valueOf(h))}</span></div>`).join(''):'<div class="empty">لا توجد بيانات.</div>';$('performanceList').innerHTML=state.holdings.length?state.holdings.slice(0,6).map(h=>`<div class="bar-row"><strong>${esc(h.symbol)}</strong><div class="bar-track"><div class="bar-fill ${h.pnlRatio!==null&&num(h.pnlRatio)>=0?'gain':'loss'}" style="width:${h.pnlRatio===null?0:Math.min(100,Math.max(3,Math.abs(num(h.pnlRatio))*3))}%"></div></div><span class="${h.pnlRatio!==null&&num(h.pnlRatio)>=0?'positive':'negative'}">${h.pnl!==null&&h.pnl!==undefined?`${signedMoneyUsd(h.pnl)} (${pct(h.pnlRatio)})`:pct(h.pnlRatio)}</span></div>`).join(''):'<div class="empty">لا توجد بيانات.</div>'}
   function renderConnections(){const ok=!!state.okxSyncedAt,xtb=!!state.xtbImportedAt,mkt=!!state.marketSyncedAt;setPill('okxStatus',ok?'متصل ومزامن':'غير متصل',ok);setPill('xtbStatus',xtb?'مستورد':'لم يُستورد',xtb);setPill('priceStatus',mkt?'محدثة':'بانتظار الربط',mkt);setPill('okxConnectionPill',ok?'متصل':'غير مربوط',ok);setPill('xtbConnectionPill',xtb?'مستورد':'استيراد يدوي',xtb);setPill('marketConnectionPill',mkt?'Twelve Data Live':'بانتظار TWELVE_DATA_KEY',mkt);$('xtbImportInfo').textContent=xtb?`آخر استيراد: ${new Date(state.xtbImportedAt).toLocaleString('ar-AE')}`:'لم يتم استيراد ملف بعد.'}
   function renderStatus(){$('statusStrip').innerHTML=`<span class="dot ${state.okxSyncedAt?'live':''}"></span><span>${state.okxSyncedAt?'OKX متصل — القيمة وPnL من حسابك، والأسعار اللحظية من سوق OKX.':'لا توجد بيانات تجريبية — اربط حسابك لإظهار بياناتك.'}</span>`}
 
@@ -104,7 +105,7 @@
       const stocks=[...new Set([...state.holdings.filter(h=>h.type==='stock').map(h=>h.symbol),...state.watchlist.filter(w=>w.type==='stock').map(w=>w.symbol)])].join(',');
       if(!stocks){state.marketSyncedAt=Date.now();render();return}
       const d=await api(`/api/market/prices?stocks=${encodeURIComponent(stocks)}`);
-      state.holdings=state.holdings.map(h=>{if(h.type!=='stock')return h;const i=d.stocks?.[h.symbol.toUpperCase()];return i?{...h,price:num(i.price),usdValue:num(h.qty)*num(i.price),changePct:num(i.changePct)}:h});
+      state.holdings=state.holdings.map(h=>{if(h.type!=='stock')return h;const i=d.stocks?.[h.symbol.toUpperCase()];if(!i)return h;const price=num(i.price),qty=num(h.qty),cost=num(h.cost),side=String(h.side||'BUY').toUpperCase();let pnl=h.pnl,pnlRatio=h.pnlRatio;if(qty>0&&cost>0&&price>0){pnl=(side==='SELL'?(cost-price):(price-cost))*qty;pnlRatio=(side==='SELL'?((cost-price)/cost):((price-cost)/cost))*100}return{...h,price,usdValue:qty*price,changePct:num(i.changePct),pnl,pnlRatio};});
       state.marketSyncedAt=Date.now();state.lastUpdated=Date.now();render();if(!silent)toast('تم تحديث أسعار الأسهم.');
     }catch(e){if(!silent)toast(e.message==='TWELVE_DATA_KEY_REQUIRED'?'أضف TWELVE_DATA_KEY في Cloudflare.':e.message);throw e}
     finally{if(!silent){loading('syncMarketBtn',false);loading('refreshBtn',false)}}
@@ -214,12 +215,76 @@
   function setView(name){$$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.view===name));$$('.view').forEach(v=>v.classList.toggle('active',v.id===`view-${name}`));document.querySelector('.app-shell')?.scrollTo({top:0,behavior:'smooth'})}
   async function runDiagnostics(){loading('diagnosticsBtn',true);try{const d=await api('/api/diagnostics'),s=d.secrets||{};$('diagnosticsResult').innerHTML=Object.entries(s).map(([k,v])=>`<div class="diag-row"><span>${esc(k)}</span><strong class="${v?'positive':'negative'}">${v?'✓ موجود':'✕ غير موجود'}</strong></div>`).join('')}catch(e){$('diagnosticsResult').textContent=e.message}finally{loading('diagnosticsBtn',false)}}
 
-  async function importXtb(file){try{const rows=await parseSheet(file),hs=rows.map((r,i)=>normalizeXtb(r,i)).filter(Boolean);if(!hs.length)throw new Error('لم أتعرف على مراكز XTB. استخدم تقرير Open Positions.');state.holdings=[...hs,...state.holdings.filter(h=>h.type==='crypto')];state.xtbImportedAt=Date.now();render();toast(`تم استيراد ${hs.length} مركز من XTB.`);if(state.settings.accessToken)syncMarket(true)}catch(e){toast(e.message||'تعذر قراءة ملف XTB.')}finally{$('xtbFile').value=''}}
-  async function parseSheet(file){if(file.name.toLowerCase().endsWith('.csv'))return csv(await file.text());if(typeof XLSX==='undefined')throw new Error('تعذر تحميل XLSX. استخدم CSV.');const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});let best=[];for(const n of wb.SheetNames){const r=XLSX.utils.sheet_to_json(wb.Sheets[n],{defval:''});if(r.length>best.length)best=r}return best}
-  function csv(text){const l=text.replace(/^\uFEFF/,'').split(/\r?\n/).filter(Boolean);if(l.length<2)return[];const sep=(l[0].match(/;/g)||[]).length>(l[0].match(/,/g)||[]).length?';':',',h=split(l[0],sep);return l.slice(1).map(x=>{const v=split(x,sep),o={};h.forEach((k,i)=>o[k]=v[i]??'');return o})}
+  async function importXtb(file){
+    try{
+      const positions=await parseXtbFile(file);
+      if(!positions.length)throw new Error('لم أتعرف على مراكز XTB المفتوحة في الملف.');
+      state.holdings=[...positions,...state.holdings.filter(h=>h.type==='crypto')];
+      state.xtbImportedAt=Date.now();state.lastUpdated=Date.now();render();
+      toast(`تم استيراد ${positions.length} مركز فعلي من XTB.`);
+      try{await syncMarket(true)}catch{}
+    }catch(e){toast(e.message||'تعذر قراءة ملف XTB.')}
+    finally{$('xtbFile').value=''}
+  }
+
+  async function parseXtbFile(file){
+    const lower=file.name.toLowerCase();
+    if(lower.endsWith('.csv')){
+      const rows=csv(await file.text());
+      return normalizeXtbRows(rows);
+    }
+    if(typeof XLSX==='undefined')throw new Error('تعذر تحميل قارئ XLSX. تأكد من اتصال الإنترنت ثم أعد المحاولة.');
+    const book=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true});
+    const sheetName=book.SheetNames.find(n=>String(n).trim().toLowerCase()==='open positions')
+      ||book.SheetNames.find(n=>/open\s*positions/i.test(n));
+    if(!sheetName)throw new Error('لم أجد ورقة Open Positions داخل تقرير XTB.');
+    const matrix=XLSX.utils.sheet_to_json(book.Sheets[sheetName],{header:1,defval:'',raw:true});
+    const headerIndex=matrix.findIndex(r=>Array.isArray(r)&&r.some(c=>String(c).trim()==='Instrument/Position')&&r.some(c=>String(c).trim()==='Ticker'));
+    if(headerIndex<0)throw new Error('صيغة تقرير XTB غير معروفة: لم أجد جدول Open Positions.');
+    const headers=matrix[headerIndex].map(x=>String(x).trim());
+    const rows=matrix.slice(headerIndex+1).filter(r=>Array.isArray(r)&&r.some(v=>String(v).trim()!=='')).map(r=>{
+      const o={};headers.forEach((h,i)=>o[h]=r[i]??'');return o;
+    });
+    return normalizeXtbRows(rows);
+  }
+
+  function normalizeXtbRows(rows){
+    const nameByTicker={};
+    for(const r of rows){
+      const ticker=String(r.Ticker||r.ticker||'').trim().toUpperCase();
+      const inst=String(r['Instrument/Position']||r.Instrument||'').trim();
+      const category=String(r.Category||'').trim().toUpperCase();
+      if(ticker&&inst&&category==='STOCK')nameByTicker[ticker]=inst;
+    }
+    const seen=new Set(),out=[];
+    for(const r of rows){
+      const tickerRaw=String(r.Ticker||r.ticker||'').trim().toUpperCase();
+      const type=String(r.Type||'').trim().toUpperCase();
+      if(!tickerRaw||!['BUY','SELL'].includes(type))continue;
+      const symbol=tickerRaw.replace(/\.US$/i,'').split('.')[0];
+      const qty=parseN(r.Volume),price=parseN(r['Current price']),cost=parseN(r['Open price']),value=parseN(r.Value);
+      const pnl=parseNullableN(r['Net Profit']),pnlRatio=parseNullableN(r['Net Profit %']);
+      if(!symbol||qty<=0||price<=0||seen.has(tickerRaw))continue;
+      seen.add(tickerRaw);
+      out.push({
+        id:`xtb-${symbol}`,
+        type:'stock',source:'XTB',verifiedXtb:true,
+        symbol,name:nameByTicker[tickerRaw]||symbol,ticker:tickerRaw,side:type,
+        qty,cost,price,usdValue:value>0?value:qty*price,
+        pnl,pnlRatio,xtbImportedPnl:pnl,xtbImportedPnlRatio:pnlRatio
+      });
+    }
+    return out;
+  }
+
+  function csv(text){
+    const l=text.replace(/^\uFEFF/,'').split(/\r?\n/).filter(Boolean);if(l.length<2)return[];
+    const sep=(l[0].match(/;/g)||[]).length>(l[0].match(/,/g)||[]).length?';':',',h=split(l[0],sep);
+    return l.slice(1).map(x=>{const v=split(x,sep),o={};h.forEach((k,i)=>o[k]=v[i]??'');return o})
+  }
   function split(line,sep){let o=[],c='',q=false;for(let i=0;i<line.length;i++){const x=line[i];if(x==='"'){if(q&&line[i+1]==='"'){c+='"';i++}else q=!q}else if(x===sep&&!q){o.push(c.trim());c=''}else c+=x}o.push(c.trim());return o}
-  function normalizeXtb(row,i){const e=Object.entries(row),get=ps=>{for(const[k,v]of e){const key=String(k).toLowerCase().replace(/[_-]/g,' ');if(ps.some(p=>key.includes(p)))return v}return''};let symbol=String(get(['symbol','ticker','instrument','market','name','رمز','الأداة'])).trim().replace(/\.US$/i,'').split(/\s+/)[0].toUpperCase();const qty=parseN(get(['volume','quantity','qty','shares','amount','الكمية','الحجم'])),cost=parseN(get(['open price','average price','avg price','purchase price','سعر الفتح','سعر الشراء'])),price=parseN(get(['current price','market price','close price','السعر الحالي']));if(!symbol||qty<=0)return null;return{id:`xtb-${symbol}-${i}`,type:'stock',source:'XTB',verifiedXtb:true,symbol,name:symbol,qty,cost,price,usdValue:qty*price,pnl:null,pnlRatio:null}}
-  function parseN(v){if(typeof v==='number')return v;const s=String(v??'').replace(/[^0-9,.-]/g,'').replace(/,(?=\d{3}(\D|$))/g,'').replace(',','.');const n=parseFloat(s);return Number.isFinite(n)?n:0}
+  function parseN(v){if(typeof v==='number')return Number.isFinite(v)?v:0;const s=String(v??'').replace(/[^0-9,.\-+]/g,'').replace(/,(?=\d{3}(\D|$))/g,'').replace(',','.');const n=parseFloat(s);return Number.isFinite(n)?n:0}
+  function parseNullableN(v){if(v===null||v===undefined||String(v).trim()==='')return null;const n=parseN(v);return Number.isFinite(n)?n:null}
 
   // Events
   $$('.tab').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));$$('[data-go]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.go)));
