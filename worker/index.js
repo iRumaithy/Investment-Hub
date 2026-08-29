@@ -19,7 +19,9 @@ export default {
           OKX_API_KEY:!!env.OKX_API_KEY,
           OKX_API_SECRET:!!env.OKX_API_SECRET,
           OKX_PASSPHRASE:!!env.OKX_PASSPHRASE,
-          TWELVE_DATA_KEY:!!env.TWELVE_DATA_KEY
+          TWELVE_DATA_KEY:!!env.TWELVE_DATA_KEY,
+          cryptoHistoryProvider:'Twelve Data',
+          liveCryptoProvider:'OKX WebSocket (browser)'
         }
       },200,cors);
       if(url.pathname==='/api/okx/balance')return await okxBalance(env,cors);
@@ -148,7 +150,7 @@ function emptyHolding(ccy){
 async function marketPrices(url,env,cors){
   const stocks=(url.searchParams.get('stocks')||'').split(',').map(cleanStock).filter(Boolean).slice(0,30);
   const cryptoSymbols=(url.searchParams.get('crypto')||'').split(',').map(s=>s.trim().toUpperCase()).filter(Boolean).slice(0,50);
-  const out={stocks:{},crypto:{},sources:{stocks:'Twelve Data',crypto:'OKX'}};
+  const out={stocks:{},crypto:{},sources:{stocks:'Twelve Data',crypto:'Twelve Data'}};
 
   for(const s of cryptoSymbols){
     const q=await cryptoQuote(s,env).catch(()=>null);
@@ -193,7 +195,7 @@ async function portfolioHistory(url,env,cors){
     const qty=n(part.slice(idx+1));
     if(symbol&&qty>0)items.push({symbol,qty});
   }
-  if(!items.length)return json({source:'OKX',points:[]},200,cors);
+  if(!items.length)return json({source:'Twelve Data',points:[]},200,cors);
 
   const series=[];
   for(const item of items.slice(0,12)){
@@ -208,7 +210,7 @@ async function portfolioHistory(url,env,cors){
     }catch{}
     await sleep(160);
   }
-  if(!series.length)return json({source:'OKX',points:[]},200,cors);
+  if(!series.length)return json({source:'Twelve Data',points:[]},200,cors);
 
   const maxLen=Math.max(...series.map(s=>s.points.length));
   const points=[];
@@ -220,7 +222,7 @@ async function portfolioHistory(url,env,cors){
     }
     if(used&&ts)points.push({ts,close:value});
   }
-  return json({source:'OKX · current holdings valuation',points},200,cors);
+  return json({source:'Twelve Data · current holdings valuation',points},200,cors);
 }
 
 function flatStable(range){
@@ -231,33 +233,46 @@ function flatStable(range){
 async function cryptoQuote(symbol,env){
   if(STABLE.has(symbol)){
     if(symbol==='AED')return null;
-    return{price:1,changePct:0,source:'OKX'};
+    return{price:1,changePct:0,source:'Stable USD'};
   }
-  const d=await publicOkxJson(env,`/api/v5/market/ticker?instId=${encodeURIComponent(symbol+'-USDT')}`);
-  const x=d.data?.[0];
-  if(!x)throw new Error('OKX ticker unavailable');
-  const last=n(x.last),open=n(x.open24h);
-  return{price:last,changePct:open?(last-open)/open*100:0,source:'OKX'};
+  if(!env.TWELVE_DATA_KEY)throw new Error('TWELVE_DATA_KEY_REQUIRED');
+  const u=new URL('https://api.twelvedata.com/quote');
+  u.searchParams.set('symbol',`${symbol}/USD`);
+  u.searchParams.set('apikey',env.TWELVE_DATA_KEY);
+  const r=await fetch(u);
+  const d=await safeJsonResponse(r,'Twelve Data');
+  if(!r.ok||d.status==='error'||d.code)throw new Error(d.message||'Twelve Data crypto quote failed');
+  const price=n(d.close||d.price);
+  if(price<=0)throw new Error('Twelve Data crypto quote unavailable');
+  return{price,changePct:n(d.percent_change),source:'Twelve Data'};
 }
 
 async function cryptoHistory(symbol,range,env){
   if(STABLE.has(symbol)){
-    if(symbol==='AED')return{source:'OKX',points:[]};
-    return{source:'OKX',points:flatStable(range)};
+    if(symbol==='AED')return{source:'Stable USD',points:[]};
+    return{source:'Stable USD',points:flatStable(range)};
   }
+  if(!env.TWELVE_DATA_KEY)throw new Error('TWELVE_DATA_KEY_REQUIRED');
   const cfg={
-    '1D':['5m',288],
-    '1W':['1H',168],
-    '1M':['4H',180],
-    '3M':['1D',90],
-    '1Y':['1D',300],
-    'ALL':['1W',300]
-  }[range]||['4H',180];
-
-  const path=`/api/v5/market/history-candles?instId=${encodeURIComponent(symbol+'-USDT')}&bar=${encodeURIComponent(cfg[0])}&limit=${cfg[1]}`;
-  const d=await publicOkxJson(env,path);
-  const points=(d.data||[]).map(x=>({ts:n(x[0]),close:n(x[4])})).filter(x=>x.ts&&x.close>0).sort((a,b)=>a.ts-b.ts);
-  return{source:'OKX',points};
+    '1D':['5min',288],
+    '1W':['1h',168],
+    '1M':['4h',180],
+    '3M':['1day',90],
+    '1Y':['1day',365],
+    'ALL':['1week',520]
+  }[range]||['4h',180];
+  const u=new URL('https://api.twelvedata.com/time_series');
+  u.searchParams.set('symbol',`${symbol}/USD`);
+  u.searchParams.set('interval',cfg[0]);
+  u.searchParams.set('outputsize',String(cfg[1]));
+  u.searchParams.set('apikey',env.TWELVE_DATA_KEY);
+  const r=await fetch(u);
+  const d=await safeJsonResponse(r,'Twelve Data');
+  if(!r.ok||d.status==='error'||!Array.isArray(d.values))throw new Error(d.message||'Twelve Data crypto history failed');
+  return{
+    source:'Twelve Data',
+    points:d.values.map(x=>({ts:Date.parse(x.datetime),close:n(x.close)})).filter(x=>x.ts&&x.close>0).sort((a,b)=>a.ts-b.ts)
+  };
 }
 
 async function stockHistory(symbol,range,env){
