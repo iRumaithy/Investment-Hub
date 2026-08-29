@@ -10,10 +10,10 @@ export default {
     };
     if(request.method==='OPTIONS')return new Response(null,{headers:cors});
     try{
-      if(url.pathname==='/api/health')return json({ok:true,service:'investment-hub-worker',version:'2.3.0'},200,cors);
+      if(url.pathname==='/api/health')return json({ok:true,service:'investment-hub-worker',version:'2.3.1'},200,cors);
       const authError=authorize(request,env);if(authError)return json({error:authError},401,cors);
       if(url.pathname==='/api/diagnostics')return json({
-        ok:true,version:'2.3.0',
+        ok:true,version:'2.3.1',
         secrets:{
           DASHBOARD_ACCESS_TOKEN:!!env.DASHBOARD_ACCESS_TOKEN,
           OKX_API_KEY:!!env.OKX_API_KEY,
