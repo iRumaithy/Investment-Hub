@@ -3,10 +3,10 @@
 
   const AED_RATE = 3.6725;
   const STORAGE_KEY = 'investmentHub_v1';
-  const APP_VERSION = '2.2.0';
+  const APP_VERSION = '2.2.1';
   const DEFAULT_API_BASE = /^https?:$/.test(location.protocol) ? location.origin : '';
   const OLD_DEMO_IDS = new Set(['s1','s2','s3','c1','c2','c3','w1','w2']);
-  const POLL_MS = 10000;
+  const POLL_MS = 30000;
   const HISTORY_SNAPSHOT_MS = 60000;
 
   const defaultState = {

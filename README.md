@@ -1,26 +1,18 @@
-# Investment Hub v2.2.0
+# Investment Hub v2.2.1
 
-## ما تم إصلاحه
-- لا تُعرض أي أسهم قديمة/تجريبية عند الترقية. يتم مسح كل مراكز الأسهم السابقة مرة واحدة.
-- أسهم XTB لا تظهر إلا بعد استيراد تقرير Open Positions الحقيقي من حسابك.
-- XTB لا يوفّر API رسميًا منذ 14 مارس 2025، لذلك الربط المستقر هو الاستيراد من تقرير XTB Web.
-- OKX يجمع الآن Trading + Funding + Savings/Earn (إذا كان endpoint متاحًا للحساب).
-- تقييم Trading يستفيد من قيمة OKX بالدولار حين تكون موجودة، بينما Funding/Savings تُقيّم بسعر OKX الحالي.
-- Twelve Data هو المصدر المطلوب للأسهم؛ لا يوجد fallback وهمي أو مصدر بديل.
-- الرسوم التاريخية للأسهم تأتي من Twelve Data.
-- Crypto والأسعار التاريخية للعملات تأتي من OKX.
+إصلاح OKX 1015 / non-JSON response.
 
-## Cloudflare Secrets
-المطلوبة:
-- DASHBOARD_ACCESS_TOKEN
-- OKX_API_KEY
-- OKX_API_SECRET
-- OKX_PASSPHRASE
-- TWELVE_DATA_KEY
+- استخدام `https://openapi.okx.com` كـ REST base الافتراضي وفق توصية OKX الحديثة.
+- fallback تلقائي إلى `https://www.okx.com`.
+- عدم محاولة JSON.parse على صفحات HTML/رسائل الحماية.
+- معالجة واضحة لخطأ 1015 / rate-limit وإعادة محاولة تلقائية.
+- تقليل مزامنة التطبيق من كل 10 ثوان إلى كل 30 ثانية.
+- فصل طلبات Trading / Funding / Savings بفواصل قصيرة لتجنب burst.
+- بقية وظائف v2.2.0 محفوظة.
 
-لا تضع أي Secret في GitHub.
-
-## XTB
-من XTB Web:
-Account History → Orders → Open Positions → Export
-ثم ارفع الملف من تبويب الربط داخل Investment Hub.
+Cloudflare Secrets:
+DASHBOARD_ACCESS_TOKEN
+OKX_API_KEY
+OKX_API_SECRET
+OKX_PASSPHRASE
+TWELVE_DATA_KEY

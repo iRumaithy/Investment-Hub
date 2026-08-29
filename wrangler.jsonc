@@ -12,6 +12,6 @@
     "binding": "ASSETS"
   },
   "vars": {
-    "OKX_API_BASE": "https://www.okx.com"
+    "OKX_API_BASE": "https://openapi.okx.com"
   }
 }
