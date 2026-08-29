@@ -1,1 +1,77 @@
+const COIN_IDS={BTC:'bitcoin',ETH:'ethereum',SOL:'solana',XRP:'ripple',ADA:'cardano',DOGE:'dogecoin',AVAX:'avalanche-2',LINK:'chainlink',DOT:'polkadot',USDT:'tether',USDC:'usd-coin'};
+export default {
+  async fetch(request,env){
+    const url=new URL(request.url);
+    const cors={
+      'Access-Control-Allow-Origin':env.ALLOWED_ORIGIN||'*',
+      'Access-Control-Allow-Methods':'GET,OPTIONS',
+      'Access-Control-Allow-Headers':'Content-Type',
+      'Cache-Control':'no-store'
+    };
+    if(request.method==='OPTIONS')return new Response(null,{headers:cors});
+    try{
+      if(url.pathname==='/api/health') return json({ok:true,service:'investment-hub-worker'},200,cors);
+      const authError=authorize(request,env);if(authError)return json({error:authError},401,cors);
+      if(url.pathname==='/api/okx/balance') return await okxBalance(env,cors);
+      if(url.pathname==='/api/market/prices') return await marketPrices(url,env,cors);
+      return json({error:'Not found'},404,cors);
+    }catch(e){return json({error:e?.message||'Server error'},500,cors)}
+  }
+};
 
+async function okxBalance(env,cors){
+  for(const k of ['OKX_API_KEY','OKX_API_SECRET','OKX_PASSPHRASE']) if(!env[k]) return json({error:`Missing ${k}`},503,cors);
+  const path='/api/v5/account/balance';
+  const ts=new Date().toISOString();
+  const sign=await hmacBase64(env.OKX_API_SECRET,ts+'GET'+path);
+  const host=env.OKX_API_BASE||'https://www.okx.com';
+  const r=await fetch(host+path,{headers:{
+    'OK-ACCESS-KEY':env.OKX_API_KEY,
+    'OK-ACCESS-SIGN':sign,
+    'OK-ACCESS-TIMESTAMP':ts,
+    'OK-ACCESS-PASSPHRASE':env.OKX_PASSPHRASE,
+    'Content-Type':'application/json'
+  }});
+  const raw=await r.json();
+  if(!r.ok||raw.code!=='0') return json({error:raw.msg||`OKX HTTP ${r.status}`,details:raw},502,cors);
+  const details=raw.data?.[0]?.details||[];
+  const holdings=[];
+  for(const d of details){
+    const qty=n(d.cashBal||d.eq||d.availBal);if(qty<=0)continue;const symbol=String(d.ccy||'').toUpperCase();
+    holdings.push({symbol,name:symbol,coinId:COIN_IDS[symbol]||'',qty,cost:0,price:0,changePct:0});
+  }
+  // Enrich known crypto prices without exposing any secret to the browser.
+  const ids=[...new Set(holdings.map(h=>h.coinId).filter(Boolean))];
+  if(ids.length){
+    const cg=await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids.join(','))}&vs_currencies=usd&include_24hr_change=true`);
+    if(cg.ok){const p=await cg.json();for(const h of holdings){if(h.coinId&&p[h.coinId]){h.price=n(p[h.coinId].usd);h.changePct=n(p[h.coinId].usd_24h_change)}}}
+  }
+  return json({holdings,ts:Date.now()},200,cors);
+}
+
+async function marketPrices(url,env,cors){
+  const stockSymbols=(url.searchParams.get('stocks')||'').split(',').map(s=>s.trim().toUpperCase()).filter(Boolean).slice(0,25);
+  const cryptoIds=(url.searchParams.get('crypto')||'').split(',').map(s=>s.trim()).filter(Boolean).slice(0,50);
+  const stocks={},crypto={};
+  if(cryptoIds.length){
+    const cg=await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(cryptoIds.join(','))}&vs_currencies=usd&include_24hr_change=true`);
+    if(cg.ok){const data=await cg.json();for(const id of cryptoIds){if(data[id])crypto[id]={price:n(data[id].usd),changePct:n(data[id].usd_24h_change)}}}
+  }
+  if(stockSymbols.length){
+    if(!env.TWELVE_DATA_KEY) throw new Error('Missing TWELVE_DATA_KEY for stock prices');
+    // Twelve Data supports a comma-separated symbol request and returns keyed objects for multiple symbols.
+    const q=new URL('https://api.twelvedata.com/quote');q.searchParams.set('symbol',stockSymbols.join(','));q.searchParams.set('apikey',env.TWELVE_DATA_KEY);
+    const r=await fetch(q);const data=await r.json();
+    if(!r.ok||data.status==='error') throw new Error(data.message||'Twelve Data request failed');
+    for(const s of stockSymbols){const item=stockSymbols.length===1?data:data[s];if(item&&!item.code){stocks[s]={price:n(item.close),changePct:n(item.percent_change)}}}
+  }
+  return json({stocks,crypto,ts:Date.now()},200,cors);
+}
+
+async function hmacBase64(secret,text){
+  const enc=new TextEncoder();const key=await crypto.subtle.importKey('raw',enc.encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);const sig=await crypto.subtle.sign('HMAC',key,enc.encode(text));return bytesToBase64(new Uint8Array(sig));
+}
+function bytesToBase64(bytes){let s='';for(const b of bytes)s+=String.fromCharCode(b);return btoa(s)}
+function authorize(request,env){if(!env.DASHBOARD_ACCESS_TOKEN)return 'Missing DASHBOARD_ACCESS_TOKEN';const h=request.headers.get('Authorization')||'';return h===`Bearer ${env.DASHBOARD_ACCESS_TOKEN}`?'':'Unauthorized'}
+function n(v){const x=Number(v);return Number.isFinite(x)?x:0}
+function json(data,status,headers){return new Response(JSON.stringify(data),{status,headers:{...headers,'Content-Type':'application/json; charset=utf-8'}})}
