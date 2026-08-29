@@ -1,31 +1,24 @@
-# Investment Hub v2.4.1
+# Investment Hub v2.4.2
 
-نسخة كاملة مبنية على v2.3.1 المستقرة.
+## أهم تغيير
+تم إزالة OKX Public REST من مسار مزامنة الحساب والرسوم التاريخية لتجنب خطأ Cloudflare/OKX 1015.
 
-## الجديد
-- إصلاح عرض الربح/الخسارة: المبلغ والنسبة معًا مثل OKX، مثال `-$254.55 (-9.35%)`.
-- إصلاح إشارة إجمالي PnL وعدم فقدان علامة السالب.
-- استيراد تقرير XTB بصيغة XLSX مباشرة من ورقة `Open Positions`.
-- قارئ XTB مضبوط على التنسيق الفعلي لتقرير xStation:
-  `Instrument/Position`, `Ticker`, `Category`, `Type`, `Volume`, `Value`,
-  `Current price`, `Open price`, `Net Profit %`, `Net Profit`.
-- يمنع تكرار مركز XTB الناتج عن صف الملخص وصف Position ID.
-- يحتفظ باسم الشركة من صف الملخص ويقرأ السعر/الكمية من صف المركز التفصيلي.
-- يستخدم PnL الرسمي الموجود في تقرير XTB لحظة الاستيراد.
-- بعد الاستيراد، Twelve Data يحدّث سعر السهم ويعيد حساب PnL للسهم بناءً على سعر الفتح ونوع BUY/SELL.
-- لا توجد أي أسهم تجريبية أو مراكز وهمية.
-- الترقية لا تمسح أسهم XTB الموجودة من التخزين المحلي.
-- Service Worker cache مرفوع إلى v2.4.1 لإجبار التطبيق على استلام النسخة الجديدة.
+### المصادر
+- بيانات حساب OKX الخاصة: OKX Signed API عبر Cloudflare Worker.
+- PnL والقيمة الحالية للحساب: حقول OKX الخاصة والحساب الرسمي.
+- أسعار الكريبتو اللحظية أثناء فتح التطبيق: OKX Public WebSocket.
+- تاريخ أسعار الكريبتو والرسوم: Twelve Data.
+- أسعار وتاريخ أسهم XTB: Twelve Data.
+- استيراد XTB: XLSX/CSV الحقيقي فقط، بدون بيانات وهمية.
+
+## إصلاح مهم
+زر «مزامنة OKX» لم يعد ينتظر تحميل الرسم التاريخي. نجاح الحساب يبقى نجاحًا حتى لو تعذر مصدر الرسم مؤقتًا.
 
 ## Cloudflare Secrets المطلوبة
-- `DASHBOARD_ACCESS_TOKEN`
-- `OKX_API_KEY`
-- `OKX_API_SECRET`
-- `OKX_PASSPHRASE`
-- `TWELVE_DATA_KEY`
+- DASHBOARD_ACCESS_TOKEN
+- OKX_API_KEY
+- OKX_API_SECRET
+- OKX_PASSPHRASE
+- TWELVE_DATA_KEY
 
-## XTB
-من xStation Web:
-Account History → Orders → Export
-
-ارفع ملف XLSX مباشرة من قسم XTB داخل التطبيق.
+لا تضع أي Secret داخل GitHub أو app.js.

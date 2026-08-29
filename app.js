@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const AED_RATE=3.6725,STORAGE_KEY='investmentHub_v1',APP_VERSION='2.4.1';
+  const AED_RATE=3.6725,STORAGE_KEY='investmentHub_v1',APP_VERSION='2.4.2';
   const DEFAULT_API_BASE=/^https?:$/.test(location.protocol)?location.origin:'';
   const OLD_DEMO_IDS=new Set(['s1','s2','s3','c1','c2','c3','w1','w2']);
   const POLL_MS=60000;
@@ -93,7 +93,8 @@
     try{
       const d=await api('/api/okx/balance'),stocks=state.holdings.filter(h=>h.type==='stock');
       const crypto=(d.holdings||[]).map(h=>({id:`okx-${h.symbol}`,type:'crypto',source:'OKX',symbol:h.symbol,name:h.name||h.symbol,qty:num(h.qty),price:num(h.price),usdValue:num(h.usdValue),pnl:h.pnl===null?null:num(h.pnl),pnlRatio:h.pnlRatio===null?null:num(h.pnlRatio),spotUpl:h.spotUpl===null?null:num(h.spotUpl),spotUplRatio:h.spotUplRatio===null?null:num(h.spotUplRatio),openAvgPx:h.openAvgPx,accAvgPx:h.accAvgPx,accountParts:h.accountParts||{}}));
-      state.holdings=[...stocks,...crypto];state.okxAccountTotalUsd=num(d.totalUsd);state.okxTotalPnl=d.totalPnl===null?null:num(d.totalPnl);state.okxTotalPnlRatio=d.totalPnlRatio===null?null:num(d.totalPnlRatio);state.okxSyncedAt=Date.now();state.lastUpdated=Date.now();render();startMarketSocket();await loadMainChart(state.range,true);
+      state.holdings=[...stocks,...crypto];state.okxAccountTotalUsd=num(d.totalUsd);state.okxTotalPnl=d.totalPnl===null?null:num(d.totalPnl);state.okxTotalPnlRatio=d.totalPnlRatio===null?null:num(d.totalPnlRatio);state.okxSyncedAt=Date.now();state.lastUpdated=Date.now();render();startMarketSocket();
+      loadMainChart(state.range,true).catch(()=>{});
       if(!silent)toast(`تمت مزامنة OKX: ${crypto.length} أصل.`);
     }catch(e){if(!silent)toast(e.message||'تعذر مزامنة OKX.');throw e}
     finally{if(!silent)loading('syncOkxBtn',false)}
@@ -113,43 +114,30 @@
 
   async function syncAll(silent=false){try{await syncOkx(silent)}catch{}try{await syncMarket(silent)}catch{}}
 
-  const OKX_PUBLIC_BASES=['https://openapi.okx.com','https://www.okx.com'];
-  async function okxPublic(path){
-    let last='تعذر تحميل بيانات OKX';
-    for(const base of OKX_PUBLIC_BASES){
-      try{
-        const r=await fetch(base+path,{headers:{Accept:'application/json'},cache:'no-store'});
-        const text=await r.text();let d=null;try{d=JSON.parse(text)}catch{}
-        if(d&&r.ok&&d.code==='0')return d;
-        if(d){last=d.msg||`OKX HTTP ${r.status}`;continue}
-        if(r.status===429||/1015|rate limit/i.test(text)){last='OKX حدّ مؤقتًا من بيانات السوق. أعد المحاولة بعد لحظات.';continue}
-        last=`OKX أعاد استجابة غير متوقعة (${r.status})`;
-      }catch(e){last=e?.message||last}
-    }
-    throw new Error(last);
-  }
-  async function directCryptoHistory(symbol,range){
+  async function cryptoHistory(symbol,range){
     if(['USDT','USDC','USD'].includes(symbol)){
       const now=Date.now(),cfg={'1D':[288,300000],'1W':[168,3600000],'1M':[180,14400000],'3M':[90,86400000],'1Y':[300,86400000],'ALL':[300,604800000]}[range]||[180,14400000];
-      return Array.from({length:cfg[0]},(_,i)=>({ts:now-(cfg[0]-1-i)*cfg[1],close:1}));
+      return {source:'Stable USD',points:Array.from({length:cfg[0]},(_,i)=>({ts:now-(cfg[0]-1-i)*cfg[1],close:1}))};
     }
-    const cfg={'1D':['5m',288],'1W':['1H',168],'1M':['4H',180],'3M':['1D',90],'1Y':['1D',300],'ALL':['1W',300]}[range]||['4H',180];
-    const d=await okxPublic(`/api/v5/market/history-candles?instId=${encodeURIComponent(symbol+'-USDT')}&bar=${encodeURIComponent(cfg[0])}&limit=${cfg[1]}`);
-    return (d.data||[]).map(x=>({ts:num(x[0]),close:num(x[4])})).filter(x=>x.ts&&x.close>0).sort((a,b)=>a.ts-b.ts);
+    return await api(`/api/market/history?type=crypto&symbol=${encodeURIComponent(symbol)}&range=${encodeURIComponent(range)}`);
   }
 
   async function loadMainChart(range,quiet=false){
     state.range=range;save();const req=++mainChartRequest;
     const assets=state.holdings.filter(h=>h.type==='crypto'&&num(h.qty)>0&&h.symbol!=='AED');
     if(!assets.length){$('portfolioChart').innerHTML='';$('portfolioChartEmpty').style.display='grid';$('portfolioChartEmpty').textContent='يظهر الرسم بعد مزامنة أصول OKX.';return}
-    $('portfolioChartEmpty').style.display='grid';$('portfolioChartEmpty').textContent='جاري تحميل الرسم من OKX مباشرة…';
+    $('portfolioChartEmpty').style.display='grid';$('portfolioChartEmpty').textContent='جاري تحميل الرسم عبر Twelve Data…';
     try{
       const series=[];
       for(const h of assets.slice(0,12)){
-        try{const pts=await directCryptoHistory(h.symbol,range);if(pts.length)series.push({qty:num(h.qty),points:pts})}catch{}
+        try{
+          const d=await cryptoHistory(h.symbol,range);
+          const pts=(d.points||[]).map(x=>({ts:num(x.ts),close:num(x.close)})).filter(x=>x.ts&&x.close>0);
+          if(pts.length)series.push({qty:num(h.qty),points:pts});
+        }catch{}
       }
       if(req!==mainChartRequest)return;
-      if(!series.length)throw new Error('تعذر تحميل تاريخ أسعار OKX مباشرة.');
+      if(!series.length)throw new Error('تعذر تحميل تاريخ أسعار الكريبتو من Twelve Data.');
       const maxLen=Math.max(...series.map(s=>s.points.length)),pts=[];
       for(let i=0;i<maxLen;i++){
         let value=0,ts=0,used=0;
@@ -161,9 +149,9 @@
       }
       if(pts.length<2)throw new Error('لا تتوفر نقاط تاريخية كافية.');
       $('portfolioChartEmpty').style.display='none';drawSeries($('portfolioChart'),pts,$('portfolioTooltip'),170);
-      $('portfolioChartSource').textContent='OKX مباشر من جهازك · القيمة الحالية وPnL من حساب OKX الخاص.';
+      $('portfolioChartSource').textContent='Twelve Data · تقييم تاريخي للكميات الحالية. القيمة الحالية وPnL من حساب OKX.';
       const first=pts[0].value,last=pts.at(-1).value,move=last-first,movePct=first?move/first*100:0;
-      $('todayPnl').textContent=`${money(Math.abs(move))} · ${pct(movePct)}`;$('todayPnl').className=move>=0?'positive':'negative';
+      $('todayPnl').textContent=`${move>=0?'+':'-'}${money(Math.abs(move))} · ${pct(movePct)}`;$('todayPnl').className=move>=0?'positive':'negative';
     }catch(e){
       if(req!==mainChartRequest)return;
       $('portfolioChart').innerHTML='';$('portfolioChartEmpty').style.display='grid';$('portfolioChartEmpty').textContent=e.message||'تعذر تحميل الرسم.';
@@ -185,7 +173,7 @@
     try{
       let pts=[],source='';
       if(h.type==='crypto'){
-        pts=(await directCryptoHistory(h.symbol,range)).map(x=>({ts:x.ts,value:x.close}));source='OKX مباشر';
+        const d=await cryptoHistory(h.symbol,range);pts=(d.points||[]).map(x=>({ts:num(x.ts),value:num(x.close)}));source=d.source||'Twelve Data';
       }else{
         const d=await api(`/api/market/history?type=stock&symbol=${encodeURIComponent(h.symbol)}&range=${encodeURIComponent(range)}`);pts=(d.points||[]).map(x=>({ts:num(x.ts),value:num(x.close)}));source=d.source||'Twelve Data';
       }
@@ -249,28 +237,47 @@
   }
 
   function normalizeXtbRows(rows){
-    const nameByTicker={};
+    const summaryByTicker={};
     for(const r of rows){
       const ticker=String(r.Ticker||r.ticker||'').trim().toUpperCase();
       const inst=String(r['Instrument/Position']||r.Instrument||'').trim();
       const category=String(r.Category||'').trim().toUpperCase();
-      if(ticker&&inst&&category==='STOCK')nameByTicker[ticker]=inst;
+      if(ticker&&inst&&category==='STOCK')summaryByTicker[ticker]={
+        name:inst,
+        pnl:parseNullableN(r['Net Profit']),
+        pnlRatio:parseNullableN(r['Net Profit %'])
+      };
     }
-    const seen=new Set(),out=[];
+
+    const grouped=new Map();
     for(const r of rows){
       const tickerRaw=String(r.Ticker||r.ticker||'').trim().toUpperCase();
-      const type=String(r.Type||'').trim().toUpperCase();
-      if(!tickerRaw||!['BUY','SELL'].includes(type))continue;
+      const side=String(r.Type||'').trim().toUpperCase();
+      if(!tickerRaw||!['BUY','SELL'].includes(side))continue;
       const symbol=tickerRaw.replace(/\.US$/i,'').split('.')[0];
       const qty=parseN(r.Volume),price=parseN(r['Current price']),cost=parseN(r['Open price']),value=parseN(r.Value);
-      const pnl=parseNullableN(r['Net Profit']),pnlRatio=parseNullableN(r['Net Profit %']);
-      if(!symbol||qty<=0||price<=0||seen.has(tickerRaw))continue;
-      seen.add(tickerRaw);
+      const rowPnl=parseNullableN(r['Net Profit']);
+      if(!symbol||qty<=0||price<=0)continue;
+      const key=`${tickerRaw}|${side}`;
+      const g=grouped.get(key)||{ticker:tickerRaw,symbol,side,qty:0,value:0,costValue:0,price,pnl:0,pnlKnown:false};
+      g.qty+=qty;g.value+=value>0?value:qty*price;g.costValue+=qty*cost;g.price=price;
+      if(rowPnl!==null){g.pnl+=rowPnl;g.pnlKnown=true}
+      grouped.set(key,g);
+    }
+
+    const out=[];
+    for(const g of grouped.values()){
+      const summary=summaryByTicker[g.ticker]||{};
+      const cost=g.qty>0?g.costValue/g.qty:0;
+      const pnl=summary.pnl!==null&&summary.pnl!==undefined?summary.pnl:(g.pnlKnown?g.pnl:null);
+      const pnlRatio=summary.pnlRatio!==null&&summary.pnlRatio!==undefined
+        ?summary.pnlRatio
+        :(pnl!==null&&cost>0&&g.qty>0?pnl/(cost*g.qty)*100:null);
       out.push({
-        id:`xtb-${symbol}`,
+        id:`xtb-${g.symbol}-${g.side}`,
         type:'stock',source:'XTB',verifiedXtb:true,
-        symbol,name:nameByTicker[tickerRaw]||symbol,ticker:tickerRaw,side:type,
-        qty,cost,price,usdValue:value>0?value:qty*price,
+        symbol:g.symbol,name:summary.name||g.symbol,ticker:g.ticker,side:g.side,
+        qty:g.qty,cost,price:g.price,usdValue:g.value,
         pnl,pnlRatio,xtbImportedPnl:pnl,xtbImportedPnlRatio:pnlRatio
       });
     }
