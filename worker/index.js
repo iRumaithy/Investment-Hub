@@ -142,7 +142,7 @@ async function cryptoQuote(symbol,env){
 }
 async function cryptoHistory(symbol,range,env){
   if(STABLE.has(symbol))return{source:'OKX',points:[{ts:Date.now()-864e5,close:1},{ts:Date.now(),close:1}]};
-  const cfg={1D:['5m',288],1W:['1H',168],1M:['4H',180],3M:['1D',90],1Y:['1D',300],ALL:['1W',300]}[range]||['4H',180],host=env.OKX_API_BASE||'https://www.okx.com';
+  const cfg={'1D':['5m',288],'1W':['1H',168],'1M':['4H',180],'3M':['1D',90],'1Y':['1D',300],'ALL':['1W',300]}[range]||['4H',180],host=env.OKX_API_BASE||'https://www.okx.com';
   const u=new URL(host+'/api/v5/market/candles');u.searchParams.set('instId',`${symbol}-USDT`);u.searchParams.set('bar',cfg[0]);u.searchParams.set('limit',String(cfg[1]));
   const r=await fetch(u),d=await r.json();if(!r.ok||d.code!=='0')throw new Error(d.msg||'تعذر تحميل تاريخ OKX');
   return{source:'OKX',points:(d.data||[]).map(x=>({ts:n(x[0]),close:n(x[4])})).filter(x=>x.close>0).sort((a,b)=>a.ts-b.ts)}
@@ -154,7 +154,7 @@ async function stooqQuote(symbol){
 }
 async function stockHistory(symbol,range,env){
   if(!env.TWELVE_DATA_KEY)throw new Error('TWELVE_DATA_KEY_REQUIRED');
-  const cfg={1D:['5min',78],1W:['30min',100],1M:['1h',180],3M:['1day',90],1Y:['1day',365],ALL:['1week',520]}[range]||['1day',90];
+  const cfg={'1D':['5min',78],'1W':['30min',100],'1M':['1h',180],'3M':['1day',90],'1Y':['1day',365],'ALL':['1week',520]}[range]||['1day',90];
   const u=new URL('https://api.twelvedata.com/time_series');
   u.searchParams.set('symbol',symbol);
   u.searchParams.set('interval',cfg[0]);
