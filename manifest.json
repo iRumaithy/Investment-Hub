@@ -1,15 +1,25 @@
 {
-  "name":"محفظتي | Investment Hub",
-  "short_name":"محفظتي",
-  "description":"لوحة شخصية لمتابعة استثمارات OKX و XTB.",
-  "start_url":"./",
-  "display":"standalone",
-  "background_color":"#06101a",
-  "theme_color":"#07131f",
-  "lang":"ar",
-  "dir":"rtl",
-  "icons":[
-    {"src":"assets/icon-192.png","sizes":"192x192","type":"image/png"},
-    {"src":"assets/icon-512.png","sizes":"512x512","type":"image/png"}
+  "name": "محفظتي | Investment Hub",
+  "short_name": "محفظتي",
+  "description": "لوحة شخصية فاخرة لمتابعة استثمارات OKX و XTB.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#faf9f6",
+  "theme_color": "#ffffff",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
   ]
 }

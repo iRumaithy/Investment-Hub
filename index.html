@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#07131f" />
+  <meta name="theme-color" content="#ffffff" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="محفظتي" />
   <meta name="description" content="لوحة شخصية لإدارة استثمارات OKX و XTB ومتابعة الأسهم والعملات الرقمية." />
   <link rel="manifest" href="manifest.json" />
@@ -173,6 +173,14 @@
           <button class="primary-btn" type="submit">حفظ الإعدادات</button>
         </form>
 
+
+        <div class="settings-card">
+          <h3>تشخيص الاتصال الآمن</h3>
+          <p>يفحص وصول إعدادات Cloudflare إلى الـWorker بدون عرض أي مفتاح أو قيمة سرية.</p>
+          <button id="diagnosticsBtn" class="secondary-btn" type="button">تشغيل التشخيص</button>
+          <div id="diagnosticsResult" class="diagnostics-result">لم يتم الفحص بعد.</div>
+        </div>
+
         <div class="settings-card">
           <h3>النسخ الاحتياطي</h3>
           <p>يمكنك تصدير كل بياناتك المحلية إلى ملف JSON ثم استعادتها لاحقًا.</p>
@@ -196,7 +204,7 @@
       </section>
     </main>
 
-    <footer><span>محفظتي Investment Hub</span><span>v1.0.0</span></footer>
+    <footer><span>محفظتي Investment Hub</span><span>v2.0.0</span></footer>
   </div>
 
   <dialog id="assetDialog">

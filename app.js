@@ -2,6 +2,7 @@
   'use strict';
   const AED_RATE = 3.6725;
   const STORAGE_KEY = 'investmentHub_v1';
+  const DEFAULT_API_BASE = /^https?:$/.test(location.protocol) ? location.origin : '';
   const demoHoldings = [
     {id:'s1',type:'stock',source:'XTB',symbol:'NVDA',name:'NVIDIA',qty:18,cost:146.2,price:181.4,changePct:2.84},
     {id:'s2',type:'stock',source:'XTB',symbol:'AAPL',name:'Apple',qty:22,cost:208.5,price:229.9,changePct:1.12},
@@ -11,7 +12,7 @@
     {id:'c3',type:'crypto',source:'OKX',symbol:'SOL',name:'Solana',coinId:'solana',qty:31,cost:156,price:198,changePct:-1.28}
   ];
   const defaultState = {
-    settings:{apiBase:'',accessToken:'',baseCurrency:'AED',demoMode:true},
+    settings:{apiBase:DEFAULT_API_BASE,accessToken:'',baseCurrency:'AED',demoMode:true},
     holdings:demoHoldings,
     watchlist:[
       {id:'w1',type:'stock',symbol:'TSLA',name:'Tesla',price:329.5,changePct:1.3},
@@ -163,6 +164,26 @@
   function cryptoId(symbol){return ({BTC:'bitcoin',ETH:'ethereum',SOL:'solana',XRP:'ripple',ADA:'cardano',DOGE:'dogecoin',AVAX:'avalanche-2',LINK:'chainlink',DOT:'polkadot'})[String(symbol).toUpperCase()]||''}
   function toggleLoading(id,on){const el=$(id);if(!el)return;el.disabled=on;el.classList.toggle('loading',on)}
 
+  async function runDiagnostics(){
+    const btn=$('diagnosticsBtn'),box=$('diagnosticsResult');if(btn)toggleLoading('diagnosticsBtn',true);
+    try{
+      const base=(state.settings.apiBase||DEFAULT_API_BASE||'').replace(/\/$/,'');
+      if(!base)throw new Error('لا يوجد رابط Worker.');
+      const r=await fetch(base+'/api/diagnostics',{headers:{'Accept':'application/json'}});
+      const d=await r.json();if(!r.ok)throw new Error(d.error||`HTTP ${r.status}`);
+      const s=d.secrets||{};
+      const rows=[
+        ['DASHBOARD_ACCESS_TOKEN',s.DASHBOARD_ACCESS_TOKEN],
+        ['OKX_API_KEY',s.OKX_API_KEY],
+        ['OKX_API_SECRET',s.OKX_API_SECRET],
+        ['OKX_PASSPHRASE',s.OKX_PASSPHRASE],
+        ['TWELVE_DATA_KEY',s.TWELVE_DATA_KEY]
+      ];
+      box.innerHTML=rows.map(([k,v])=>`<div class="diag-row"><span>${k}</span><strong class="${v?'positive':'negative'}">${v?'✓ موجود':'✕ غير موجود'}</strong></div>`).join('');
+    }catch(e){box.textContent=e.message||'تعذر تشغيل التشخيص.'}
+    finally{if(btn)toggleLoading('diagnosticsBtn',false)}
+  }
+
   async function importXtb(file){
     try{
       const rows=await parseSpreadsheet(file);if(!rows.length)throw new Error('الملف فارغ أو لم أتعرف على جدوله.');
@@ -214,10 +235,21 @@
   $('portfolioList').addEventListener('click',e=>{const item=e.target.closest('.asset-item');if(!item)return;if(e.target.dataset.action==='remove'){state.holdings=state.holdings.filter(h=>h.id!==item.dataset.id);render();showToast('تم حذف الأصل.')}else item.classList.toggle('expanded')});
   $('openAddAsset').addEventListener('click',()=>$('assetDialog').showModal());$('closeAssetDialog').addEventListener('click',()=>$('assetDialog').close());
   $('assetForm').addEventListener('submit',e=>{e.preventDefault();const type=$('assetType').value,symbol=$('assetSymbol').value.trim().toUpperCase();state.holdings.push({id:`manual-${Date.now()}`,type,source:'Manual',symbol,name:$('assetName').value.trim(),coinId:type==='crypto'?cryptoId(symbol):'',qty:num($('assetQty').value),cost:num($('assetCost').value),price:num($('assetPrice').value),changePct:0});$('assetForm').reset();$('assetDialog').close();render();showToast('تمت إضافة الأصل.');});
+  $('diagnosticsBtn')?.addEventListener('click',runDiagnostics);
   $('exportBtn').addEventListener('click',exportBackup);$('backupFile').addEventListener('change',e=>e.target.files[0]&&restoreBackup(e.target.files[0]));
   $('resetBtn').addEventListener('click',()=>{if(confirm('هل تريد إعادة ضبط كل البيانات المحلية؟')){state=deepClone(defaultState);render();showToast('تمت إعادة الضبط.')}});
   window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstallPrompt=e;$('installBtn').disabled=false;});
   $('installBtn').addEventListener('click',async()=>{if(deferredInstallPrompt){deferredInstallPrompt.prompt();await deferredInstallPrompt.userChoice;deferredInstallPrompt=null}else showToast('على iPhone: مشاركة ← إضافة إلى الشاشة الرئيسية.');});
   if('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
   render();
+
+  // v2: settings and portfolio remain in localStorage; refresh real data automatically whenever the app opens.
+  window.addEventListener('load',()=>{
+    setTimeout(async()=>{
+      if(!state.settings.apiBase) return;
+      if(!state.settings.accessToken) return;
+      try{await syncOkx()}catch{}
+      try{await syncMarket()}catch{}
+    },650);
+  });
 })();

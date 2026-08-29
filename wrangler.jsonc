@@ -3,11 +3,23 @@
   "name": "investment-hub",
   "main": "worker/index.js",
   "compatibility_date": "2026-08-29",
+  "keep_vars": true,
   "assets": {
     "directory": "./",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": [
+      "/api/*"
+    ],
+    "binding": "ASSETS"
   },
   "vars": {
     "OKX_API_BASE": "https://www.okx.com"
+  },
+  "secrets": {
+    "required": [
+      "DASHBOARD_ACCESS_TOKEN",
+      "OKX_API_KEY",
+      "OKX_API_SECRET",
+      "OKX_PASSPHRASE"
+    ]
   }
 }
