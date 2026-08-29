@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#07131f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="محفظتي" />
+  <meta name="description" content="لوحة شخصية لإدارة استثمارات OKX و XTB ومتابعة الأسهم والعملات الرقمية." />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="assets/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>محفظتي | Investment Hub</title>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Investment Hub</p>
+        <h1>محفظتي</h1>
+      </div>
+      <div class="top-actions">
+        <button id="refreshBtn" class="icon-btn" type="button" aria-label="تحديث الأسعار" title="تحديث الأسعار">↻</button>
+        <button id="currencyBtn" class="currency-btn" type="button">AED</button>
+      </div>
+    </header>
+
+    <div id="statusStrip" class="status-strip" aria-live="polite">
+      <span class="dot demo"></span><span>الوضع التجريبي مفعّل — يمكنك استخدام التطبيق فورًا.</span>
+    </div>
+
+    <nav class="tabs" aria-label="أقسام التطبيق">
+      <button class="tab active" data-view="dashboard" type="button">الرئيسية</button>
+      <button class="tab" data-view="portfolio" type="button">الأصول</button>
+      <button class="tab" data-view="watchlist" type="button">المراقبة</button>
+      <button class="tab" data-view="analytics" type="button">التحليلات</button>
+      <button class="tab" data-view="connections" type="button">الربط</button>
+      <button class="tab" data-view="settings" type="button">الإعدادات</button>
+    </nav>
+
+    <main>
+      <section id="view-dashboard" class="view active">
+        <article class="hero-card">
+          <div class="hero-row">
+            <div>
+              <span class="muted">إجمالي قيمة المحفظة</span>
+              <div id="totalValue" class="hero-value">—</div>
+              <div id="totalUsd" class="subvalue">—</div>
+            </div>
+            <div class="hero-badge">LIVE</div>
+          </div>
+          <div class="pnl-row">
+            <div><span class="muted">اليوم</span><strong id="todayPnl">—</strong></div>
+            <div><span class="muted">إجمالي العائد</span><strong id="totalPnl">—</strong></div>
+          </div>
+          <svg id="portfolioChart" class="sparkline" viewBox="0 0 640 170" role="img" aria-label="رسم تقريبي لأداء المحفظة"></svg>
+          <div class="range-row" role="group" aria-label="الفترة الزمنية">
+            <button class="range active" data-range="1M" type="button">1M</button>
+            <button class="range" data-range="3M" type="button">3M</button>
+            <button class="range" data-range="6M" type="button">6M</button>
+            <button class="range" data-range="1Y" type="button">1Y</button>
+            <button class="range" data-range="ALL" type="button">ALL</button>
+          </div>
+        </article>
+
+        <div class="metric-grid">
+          <article class="metric-card"><span>الأسهم · XTB</span><strong id="stocksValue">—</strong><small id="stocksPct">—</small></article>
+          <article class="metric-card"><span>Crypto · OKX</span><strong id="cryptoValue">—</strong><small id="cryptoPct">—</small></article>
+          <article class="metric-card"><span>عدد الأصول</span><strong id="assetCount">—</strong><small>موحّدة في مكان واحد</small></article>
+          <article class="metric-card"><span>آخر تحديث</span><strong id="lastUpdate">—</strong><small id="marketState">الأسعار التجريبية</small></article>
+        </div>
+
+        <section class="section-block">
+          <div class="section-head">
+            <div><p class="eyebrow">Portfolio</p><h2>أهم الأصول</h2></div>
+            <button class="text-btn" data-go="portfolio" type="button">عرض الكل</button>
+          </div>
+          <div id="topHoldings" class="asset-list"></div>
+        </section>
+
+        <section class="section-block two-col">
+          <article>
+            <div class="section-head compact"><h2>توزيع المحفظة</h2></div>
+            <div class="allocation-wrap">
+              <div id="allocationDonut" class="donut" aria-label="توزيع المحفظة"></div>
+              <div id="allocationLegend" class="legend"></div>
+            </div>
+          </article>
+          <article>
+            <div class="section-head compact"><h2>الحالة</h2></div>
+            <div class="health-list">
+              <div><span>OKX</span><span id="okxStatus" class="pill warn">تجريبي</span></div>
+              <div><span>XTB</span><span id="xtbStatus" class="pill warn">بيانات تجريبية</span></div>
+              <div><span>أسعار السوق</span><span id="priceStatus" class="pill warn">تجريبية</span></div>
+            </div>
+          </article>
+        </section>
+      </section>
+
+      <section id="view-portfolio" class="view">
+        <div class="section-head">
+          <div><p class="eyebrow">Holdings</p><h2>جميع الأصول</h2></div>
+          <button id="openAddAsset" class="primary-btn" type="button">＋ إضافة أصل</button>
+        </div>
+        <div class="filter-row">
+          <button class="filter active" data-filter="all" type="button">الكل</button>
+          <button class="filter" data-filter="stock" type="button">الأسهم</button>
+          <button class="filter" data-filter="crypto" type="button">Crypto</button>
+        </div>
+        <div id="portfolioList" class="asset-list large"></div>
+      </section>
+
+      <section id="view-watchlist" class="view">
+        <div class="section-head">
+          <div><p class="eyebrow">Watchlist</p><h2>قائمة المراقبة</h2></div>
+        </div>
+        <form id="watchForm" class="inline-form">
+          <label>الرمز<input id="watchSymbol" required maxlength="15" placeholder="AAPL أو BTC" /></label>
+          <label>النوع<select id="watchType"><option value="stock">سهم</option><option value="crypto">Crypto</option></select></label>
+          <button class="primary-btn" type="submit">إضافة</button>
+        </form>
+        <div id="watchList" class="asset-list"></div>
+      </section>
+
+      <section id="view-analytics" class="view">
+        <div class="section-head"><div><p class="eyebrow">Insights</p><h2>التحليلات</h2></div></div>
+        <div id="analyticsCards" class="metric-grid"></div>
+        <div class="analytics-grid">
+          <article class="panel"><h3>أكبر المراكز</h3><div id="largestPositions" class="bar-list"></div></article>
+          <article class="panel"><h3>الربح والخسارة</h3><div id="performanceList" class="bar-list"></div></article>
+        </div>
+      </section>
+
+      <section id="view-connections" class="view">
+        <div class="section-head"><div><p class="eyebrow">Connections</p><h2>ربط المحافظ</h2></div></div>
+        <div class="connection-grid">
+          <article class="connection-card">
+            <div class="brand-line"><div class="brand okx">OKX</div><span id="okxConnectionPill" class="pill warn">غير مربوط</span></div>
+            <p>مزامنة مباشرة باستخدام API Key بصلاحية قراءة فقط. المفاتيح محفوظة في Cloudflare Worker ولا تصل إلى المتصفح.</p>
+            <button id="syncOkxBtn" class="primary-btn wide" type="button">مزامنة OKX</button>
+            <small>يتطلب إعداد Secrets في Cloudflare Worker.</small>
+          </article>
+          <article class="connection-card">
+            <div class="brand-line"><div class="brand xtb">XTB</div><span id="xtbConnectionPill" class="pill warn">استيراد يدوي</span></div>
+            <p>ارفع تقرير المراكز من XTB بصيغة XLSX أو CSV. سنقرأ الرمز والكمية وسعر التكلفة ثم نحدّث السعر من السوق.</p>
+            <label class="file-btn">استيراد ملف XTB<input id="xtbFile" type="file" accept=".xlsx,.xls,.csv,text/csv" hidden /></label>
+            <small id="xtbImportInfo">لم يتم استيراد ملف بعد.</small>
+          </article>
+          <article class="connection-card">
+            <div class="brand-line"><div class="brand market">MARKET</div><span id="marketConnectionPill" class="pill warn">Demo</span></div>
+            <p>أسعار Crypto من CoinGecko وأسعار الأسهم من Twelve Data عبر Worker لحماية المفاتيح.</p>
+            <button id="syncMarketBtn" class="secondary-btn wide" type="button">تحديث أسعار السوق</button>
+          </article>
+        </div>
+      </section>
+
+      <section id="view-settings" class="view">
+        <div class="section-head"><div><p class="eyebrow">Settings</p><h2>الإعدادات</h2></div></div>
+        <form id="settingsForm" class="settings-card">
+          <label>رابط Cloudflare Worker
+            <input id="apiBase" type="url" placeholder="https://your-worker.workers.dev" />
+            <small>اتركه فارغًا لاستخدام الوضع التجريبي.</small>
+          </label>
+          <label>رمز دخول الـ API
+            <input id="accessToken" type="password" autocomplete="off" placeholder="رمز سري خاص بهذا الداشبورد" />
+            <small>يوضع أيضًا كـ Secret باسم DASHBOARD_ACCESS_TOKEN في Cloudflare Worker ولا يُحفظ داخل GitHub.</small>
+          </label>
+          <label>العملة الأساسية
+            <select id="baseCurrency"><option value="AED">AED — درهم إماراتي</option><option value="USD">USD — دولار أمريكي</option></select>
+          </label>
+          <label class="switch-row"><span><strong>الوضع التجريبي</strong><small>احتفظ ببيانات تجريبية عند عدم وجود اتصال.</small></span><input id="demoMode" type="checkbox" /></label>
+          <button class="primary-btn" type="submit">حفظ الإعدادات</button>
+        </form>
+
+        <div class="settings-card">
+          <h3>النسخ الاحتياطي</h3>
+          <p>يمكنك تصدير كل بياناتك المحلية إلى ملف JSON ثم استعادتها لاحقًا.</p>
+          <div class="button-row">
+            <button id="exportBtn" class="secondary-btn" type="button">تصدير نسخة احتياطية</button>
+            <label class="secondary-btn file-label">استعادة نسخة<input id="backupFile" type="file" accept="application/json,.json" hidden /></label>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h3>التثبيت كتطبيق</h3>
+          <p>بعد النشر عبر HTTPS يمكنك إضافته إلى الشاشة الرئيسية على iPhone ليعمل كتطبيق PWA.</p>
+          <button id="installBtn" class="secondary-btn" type="button">إضافة للشاشة الرئيسية</button>
+        </div>
+
+        <div class="danger-card">
+          <h3>إعادة ضبط البيانات المحلية</h3>
+          <p>يمسح الأصول وقائمة المراقبة والإعدادات المخزنة في هذا الجهاز فقط.</p>
+          <button id="resetBtn" class="danger-btn" type="button">إعادة الضبط</button>
+        </div>
+      </section>
+    </main>
+
+    <footer><span>محفظتي Investment Hub</span><span>v1.0.0</span></footer>
+  </div>
+
+  <dialog id="assetDialog">
+    <form id="assetForm" method="dialog" class="dialog-card">
+      <div class="dialog-head"><h3>إضافة أصل</h3><button id="closeAssetDialog" type="button" class="icon-btn">×</button></div>
+      <label>النوع<select id="assetType"><option value="stock">سهم</option><option value="crypto">Crypto</option></select></label>
+      <label>الرمز<input id="assetSymbol" required maxlength="20" placeholder="NVDA أو BTC" /></label>
+      <label>الاسم<input id="assetName" required maxlength="60" placeholder="NVIDIA أو Bitcoin" /></label>
+      <div class="form-grid">
+        <label>الكمية<input id="assetQty" required type="number" min="0" step="any" /></label>
+        <label>متوسط الشراء USD<input id="assetCost" required type="number" min="0" step="any" /></label>
+      </div>
+      <label>السعر الحالي USD<input id="assetPrice" required type="number" min="0" step="any" /></label>
+      <button class="primary-btn" value="default" type="submit">حفظ الأصل</button>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" aria-live="polite"></div>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
