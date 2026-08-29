@@ -143,13 +143,13 @@
           </article>
           <article class="connection-card">
             <div class="brand-line"><div class="brand xtb">XTB</div><span id="xtbConnectionPill" class="pill warn">استيراد يدوي</span></div>
-            <p>ارفع تقرير المراكز من XTB بصيغة XLSX أو CSV. سنقرأ الرمز والكمية وسعر التكلفة ثم نحدّث السعر من السوق.</p>
+            <p>ارفع تقرير Open Positions الحقيقي من XTB Web بصيغة XLSX أو CSV. لن نعرض أي سهم قبل استيراده من حسابك، ثم نحدّث سعره عبر Twelve Data.</p>
             <label class="file-btn">استيراد ملف XTB<input id="xtbFile" type="file" accept=".xlsx,.xls,.csv,text/csv" hidden /></label>
             <small id="xtbImportInfo">لم يتم استيراد ملف بعد.</small>
           </article>
           <article class="connection-card">
             <div class="brand-line"><div class="brand market">MARKET</div><span id="marketConnectionPill" class="pill warn">غير متصل</span></div>
-            <p>أسعار Crypto مباشرة من OKX، وأسعار الأسهم من Twelve Data عند توفره مع مصدر مجاني احتياطي تلقائيًا.</p>
+            <p>أسعار Crypto مباشرة من OKX، وأسعار الأسهم الفعلية من Twelve Data باستخدام المفتاح المحفوظ في Cloudflare.</p>
             <button id="syncMarketBtn" class="secondary-btn wide" type="button">تحديث أسعار السوق</button>
           </article>
         </div>
@@ -203,7 +203,7 @@
       </section>
     </main>
 
-    <footer><span>محفظتي Investment Hub</span><span>v2.1.0</span></footer>
+    <footer><span>محفظتي Investment Hub</span><span>v2.2.0</span></footer>
   </div>
 
   <dialog id="assetDialog">

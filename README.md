@@ -1,28 +1,26 @@
-# Investment Hub v2.1.0
+# Investment Hub v2.2.0
 
-حزمة كاملة جاهزة للاستبدال في GitHub.
+## ما تم إصلاحه
+- لا تُعرض أي أسهم قديمة/تجريبية عند الترقية. يتم مسح كل مراكز الأسهم السابقة مرة واحدة.
+- أسهم XTB لا تظهر إلا بعد استيراد تقرير Open Positions الحقيقي من حسابك.
+- XTB لا يوفّر API رسميًا منذ 14 مارس 2025، لذلك الربط المستقر هو الاستيراد من تقرير XTB Web.
+- OKX يجمع الآن Trading + Funding + Savings/Earn (إذا كان endpoint متاحًا للحساب).
+- تقييم Trading يستفيد من قيمة OKX بالدولار حين تكون موجودة، بينما Funding/Savings تُقيّم بسعر OKX الحالي.
+- Twelve Data هو المصدر المطلوب للأسهم؛ لا يوجد fallback وهمي أو مصدر بديل.
+- الرسوم التاريخية للأسهم تأتي من Twelve Data.
+- Crypto والأسعار التاريخية للعملات تأتي من OKX.
 
-## أهم التغييرات
-- لا توجد أي مبالغ أو أسهم أو عملات تجريبية.
-- ترقية تلقائية تمسح فقط سجلات Demo القديمة، وتبقي بياناتك الحقيقية.
-- OKX يجمع Trading Account + Funding Account بدل قراءة Trading فقط.
-- تقييم العملات وأسعارها من OKX مباشرة، مع حفظ إجمالي USD.
-- مزامنة تلقائية كل 10 ثوان أثناء فتح التطبيق، وإعادة مزامنة فور الرجوع للتطبيق.
-- Access Token والإعدادات تبقى محفوظة محليًا ولا يطلب الربط مرة أخرى.
-- الرسم الرئيسي يستخدم snapshots فعلية للمحفظة فقط؛ لا يتم اختلاق خط تاريخي.
-- رسم تاريخي لكل سهم/عملة من زر «الرسم البياني» مع 1D / 1W / 1M / 3M / 1Y / ALL.
-- منع Pinch-to-Zoom وRubber-band/الفراغات أعلى وأسفل التطبيق مع استمرار التمرير الطبيعي داخل الصفحة.
-- `TWELVE_DATA_KEY` أصبح اختياريًا: عند عدم وجوده يستخدم التطبيق Stooq تلقائيًا للأسهم بدل ظهور خطأ Missing.
-- Crypto market/history من OKX.
-- إصدار PWA cache: v2.1.0.
-
-## Cloudflare Secrets المطلوبة
+## Cloudflare Secrets
+المطلوبة:
 - DASHBOARD_ACCESS_TOKEN
 - OKX_API_KEY
 - OKX_API_SECRET
 - OKX_PASSPHRASE
-
-## اختياري
-- TWELVE_DATA_KEY — لتحسين بيانات الأسهم. عدم وجوده لن يوقف التطبيق.
+- TWELVE_DATA_KEY
 
 لا تضع أي Secret في GitHub.
+
+## XTB
+من XTB Web:
+Account History → Orders → Open Positions → Export
+ثم ارفع الملف من تبويب الربط داخل Investment Hub.
