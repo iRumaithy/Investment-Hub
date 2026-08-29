@@ -7,3 +7,19 @@ button,input,select{font:inherit}.app-shell{width:min(1120px,100%);margin:auto;p
 .diagnostics-result{border:1px solid var(--line);background:#fcfbf8;border-radius:14px;padding:10px 12px;color:var(--muted);font-size:12px;display:flex;flex-direction:column;gap:8px}
 .diag-row{display:flex;justify-content:space-between;align-items:center;gap:12px;direction:ltr}
 .diag-row span{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;color:#716b61}
+
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+body{touch-action:pan-y}
+.app-shell{height:100dvh;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:none;-webkit-overflow-scrolling:touch}
+.chart-stage{position:relative;min-height:170px}
+.chart-empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted);font-size:12px;padding:24px;pointer-events:none}
+.chart-tooltip{position:absolute;left:12px;top:8px;background:rgba(34,31,26,.88);color:#fff;padding:7px 9px;border-radius:10px;font-size:10px;direction:ltr;z-index:3;pointer-events:none}
+.asset-actions{display:flex!important}
+.asset-action{color:#805b16;background:#fffaf0;border-color:#e3d4af}
+.chart-dialog-card{width:min(720px,94vw)}
+.asset-chart-stage{min-height:250px}
+.asset-chart-summary{display:flex;justify-content:space-between;align-items:center;direction:ltr;font-size:18px}
+.asset-chart-summary strong{font-size:25px}
+.asset-ranges{overflow-x:auto;justify-content:flex-start}
+.asset-range{border:0;background:#f3efe5;color:#716b61;padding:8px 11px;border-radius:10px;font-size:11px}
+.asset-range.active{background:linear-gradient(135deg,#a9771d,#d6b75f);color:#fff}

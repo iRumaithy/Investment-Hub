@@ -1,7 +1,7 @@
 {
   "name": "محفظتي | Investment Hub",
   "short_name": "محفظتي",
-  "description": "لوحة شخصية فاخرة لمتابعة استثمارات OKX و XTB.",
+  "description": "لوحة استثمارات فعلية لمزامنة OKX واستيراد XTB بدون بيانات تجريبية.",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#faf9f6",

@@ -13,13 +13,5 @@
   },
   "vars": {
     "OKX_API_BASE": "https://www.okx.com"
-  },
-  "secrets": {
-    "required": [
-      "DASHBOARD_ACCESS_TOKEN",
-      "OKX_API_KEY",
-      "OKX_API_SECRET",
-      "OKX_PASSPHRASE"
-    ]
   }
 }
