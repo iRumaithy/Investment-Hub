@@ -31,3 +31,32 @@ body{touch-action:pan-y}
 /* v2.4.1: PnL amount + percentage on one line */
 .asset-value small{direction:ltr;unicode-bidi:isolate;white-space:nowrap;font-variant-numeric:tabular-nums}
 @media(max-width:430px){.asset-value small{font-size:11px}}
+
+
+/* v2.5.0 — Investment Journal + OKX accuracy */
+.section-intro{margin:-2px 0 14px;color:var(--muted);font-size:12px;line-height:1.8}
+.compact-select{min-height:38px;border:1px solid var(--line);border-radius:11px;background:#fff;color:var(--text);padding:7px 10px}
+.trade-list{display:flex;flex-direction:column;gap:9px}
+.trade-card{border:1px solid var(--line);background:rgba(255,255,255,.92);box-shadow:var(--shadow);border-radius:18px;padding:14px}
+.trade-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}
+.trade-head strong,.trade-head span{display:block}.trade-head strong{font-size:14px}.trade-head span{font-size:11px;color:var(--muted);margin-top:3px}
+.trade-side{font-size:10px;font-weight:900;border-radius:999px;padding:5px 9px;border:1px solid}
+.trade-side.buy{color:var(--green);border-color:#bfe0cd;background:#f1faf5}
+.trade-side.sell{color:var(--red);border-color:#ebc9c9;background:#fff5f5}
+.trade-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.trade-grid>div{background:#fbfaf7;border:1px solid #eee8dc;border-radius:12px;padding:9px}
+.trade-grid span,.trade-grid strong{display:block}.trade-grid span{font-size:10px;color:var(--muted)}.trade-grid strong{margin-top:4px;font-size:12px;direction:ltr;text-align:right}
+.trade-result{margin-top:10px;padding:9px 10px;border-radius:11px;background:#faf8f2;font-size:12px;font-weight:800;direction:ltr;text-align:right}
+.trade-result small{color:var(--muted);font-weight:600}
+.trade-note{margin:9px 0 0;color:var(--muted);font-size:11px;line-height:1.7}
+.trade-delete{margin-top:10px;border:0;background:transparent;color:var(--red);font-size:10px;padding:5px}
+.trade-preview{border:1px dashed #d8c697;background:#fffaf0;color:#805b16;border-radius:12px;padding:10px 12px;font-size:12px;direction:ltr;text-align:center;font-weight:800}
+.dialog-card textarea{width:100%;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--text);padding:10px 12px;font:inherit;font-size:16px;resize:vertical}
+.okx-accuracy-box{border-top:1px solid var(--line);padding-top:12px;margin-top:2px}
+.accuracy-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:9px;font-size:12px}
+.accuracy-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-bottom:9px}
+.accuracy-grid>div{border:1px solid #eee8dc;background:#fbfaf7;border-radius:11px;padding:8px}
+.accuracy-grid span,.accuracy-grid strong{display:block}.accuracy-grid span{font-size:9px;color:var(--muted)}.accuracy-grid strong{font-size:11px;margin-top:3px;direction:ltr;text-align:right}
+.compact-empty{padding:14px 8px}
+.open-position-card .trade-result{background:#fffdf8}
+@media(min-width:760px){.trade-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.accuracy-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}

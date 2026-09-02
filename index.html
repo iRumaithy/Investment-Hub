@@ -33,6 +33,7 @@
     <nav class="tabs" aria-label="أقسام التطبيق">
       <button class="tab active" data-view="dashboard" type="button">الرئيسية</button>
       <button class="tab" data-view="portfolio" type="button">الأصول</button>
+      <button class="tab" data-view="investment-log" type="button">السجل</button>
       <button class="tab" data-view="watchlist" type="button">المراقبة</button>
       <button class="tab" data-view="analytics" type="button">التحليلات</button>
       <button class="tab" data-view="connections" type="button">الربط</button>
@@ -112,6 +113,37 @@
         <div id="portfolioList" class="asset-list large"></div>
       </section>
 
+
+      <section id="view-investment-log" class="view">
+        <div class="section-head">
+          <div><p class="eyebrow">Investment Journal</p><h2>سجل استثماراتي</h2></div>
+          <button id="openTradeDialog" class="primary-btn" type="button">＋ تسجيل عملية</button>
+        </div>
+        <p class="section-intro">سجّل كل شراء وبيع بشكل مستقل. يحسب السجل الربح المحقق من عمليات البيع بطريقة متوسط التكلفة، ويعرض الربح غير المحقق للمراكز المفتوحة عند توفر سعر حي.</p>
+
+        <div class="metric-grid log-metrics">
+          <article class="metric-card"><span>إجمالي المبالغ المستثمرة</span><strong id="logInvested">—</strong><small>إجمالي عمليات الشراء</small></article>
+          <article class="metric-card"><span>الربح المحقق</span><strong id="logRealized">—</strong><small>من عمليات البيع الفعلية</small></article>
+          <article class="metric-card"><span>غير المحقق</span><strong id="logUnrealized">—</strong><small>للمراكز المفتوحة</small></article>
+          <article class="metric-card"><span>نسبة الصفقات الرابحة</span><strong id="logWinRate">—</strong><small>من عمليات البيع</small></article>
+        </div>
+
+        <section class="section-block">
+          <div class="section-head compact"><div><p class="eyebrow">Open</p><h2>الاستثمارات المفتوحة</h2></div></div>
+          <div id="openInvestmentPositions" class="trade-list"></div>
+        </section>
+
+        <section class="section-block">
+          <div class="section-head compact">
+            <div><p class="eyebrow">History</p><h2>سجل العمليات</h2></div>
+            <select id="tradeFilter" class="compact-select" aria-label="تصفية سجل الاستثمار">
+              <option value="all">الكل</option><option value="stock">الأسهم</option><option value="crypto">Crypto</option>
+            </select>
+          </div>
+          <div id="tradeList" class="trade-list"></div>
+        </section>
+      </section>
+
       <section id="view-watchlist" class="view">
         <div class="section-head">
           <div><p class="eyebrow">Watchlist</p><h2>قائمة المراقبة</h2></div>
@@ -139,8 +171,9 @@
           <article class="connection-card">
             <div class="brand-line"><div class="brand okx">OKX</div><span id="okxConnectionPill" class="pill warn">غير مربوط</span></div>
             <p>مزامنة مباشرة باستخدام API Key بصلاحية قراءة فقط. المفاتيح محفوظة في Cloudflare Worker ولا تصل إلى المتصفح.</p>
-            <button id="syncOkxBtn" class="primary-btn wide" type="button">مزامنة OKX</button>
-            <small>يتطلب إعداد Secrets في Cloudflare Worker.</small>
+            <button id="syncOkxBtn" class="primary-btn wide" type="button">مزامنة كاملة من OKX</button>
+            <small>القيمة والكمية وPnL الرسمية لا تتغير بالسعر اللحظي. مزامنة تلقائية كل 30 ثانية أثناء فتح التطبيق.</small>
+            <div id="okxAccuracyBox" class="okx-accuracy-box"><div class="empty compact-empty">تظهر تفاصيل دقة OKX بعد أول مزامنة.</div></div>
           </article>
           <article class="connection-card">
             <div class="brand-line"><div class="brand xtb">XTB</div><span id="xtbConnectionPill" class="pill warn">استيراد يدوي</span></div>
@@ -150,7 +183,7 @@
           </article>
           <article class="connection-card">
             <div class="brand-line"><div class="brand market">MARKET</div><span id="marketConnectionPill" class="pill warn">غير متصل</span></div>
-            <p>أسعار Crypto مباشرة من OKX، وأسعار الأسهم الفعلية من Twelve Data باستخدام المفتاح المحفوظ في Cloudflare.</p>
+            <p>أسعار Crypto اللحظية من OKX WebSocket للعرض فقط، بينما القيمة الرسمية للمحفظة تبقى من مزامنة حساب OKX. تاريخ الأسعار والأسهم من Twelve Data.</p>
             <button id="syncMarketBtn" class="secondary-btn wide" type="button">تحديث أسعار السوق</button>
           </article>
         </div>
@@ -204,8 +237,38 @@
       </section>
     </main>
 
-    <footer><span>محفظتي Investment Hub</span><span>v2.4.2</span></footer>
+    <footer><span>محفظتي Investment Hub</span><span>v2.5.0</span></footer>
   </div>
+
+
+  <dialog id="tradeDialog">
+    <form id="tradeForm" method="dialog" class="dialog-card">
+      <div class="dialog-head"><h3>تسجيل عملية استثمار</h3><button id="closeTradeDialog" type="button" class="icon-btn">×</button></div>
+      <div class="form-grid">
+        <label>العملية<select id="tradeSide"><option value="BUY">شراء</option><option value="SELL">بيع</option></select></label>
+        <label>النوع<select id="tradeType"><option value="crypto">Crypto</option><option value="stock">سهم</option></select></label>
+      </div>
+      <div class="form-grid">
+        <label>الرمز<input id="tradeSymbol" required maxlength="20" placeholder="BTC أو AAPL" /></label>
+        <label>الاسم<input id="tradeName" maxlength="60" placeholder="Bitcoin أو Apple" /></label>
+      </div>
+      <div class="form-grid">
+        <label>المنصة<select id="tradePlatform"><option>OKX</option><option>XTB</option><option>Binance</option><option>يدوي</option><option>أخرى</option></select></label>
+        <label>التاريخ<input id="tradeDate" required type="date" /></label>
+      </div>
+      <div class="form-grid">
+        <label>الكمية<input id="tradeQty" required type="number" min="0" step="any" /></label>
+        <label>سعر الوحدة USD<input id="tradePrice" required type="number" min="0" step="any" /></label>
+      </div>
+      <div class="form-grid">
+        <label>الرسوم USD<input id="tradeFees" type="number" min="0" step="any" value="0" /></label>
+        <label>هدف الربح % <small>اختياري للشراء</small><input id="tradeTarget" type="number" step="any" placeholder="20" /></label>
+      </div>
+      <div id="tradePreview" class="trade-preview">—</div>
+      <label>ملاحظات<textarea id="tradeNote" rows="3" maxlength="400" placeholder="سبب الشراء، الخطة، سبب البيع..."></textarea></label>
+      <button class="primary-btn wide" type="submit">حفظ العملية</button>
+    </form>
+  </dialog>
 
   <dialog id="assetDialog">
     <form id="assetForm" method="dialog" class="dialog-card">

@@ -1,15 +1,16 @@
 (() => {
   'use strict';
-  const AED_RATE=3.6725,STORAGE_KEY='investmentHub_v1',APP_VERSION='2.4.2';
+  const AED_RATE=3.6725,STORAGE_KEY='investmentHub_v1',APP_VERSION='2.5.0';
   const DEFAULT_API_BASE=/^https?:$/.test(location.protocol)?location.origin:'';
   const OLD_DEMO_IDS=new Set(['s1','s2','s3','c1','c2','c3','w1','w2']);
-  const POLL_MS=60000;
+  const POLL_MS=30000;
   const defaultState={
     dataVersion:APP_VERSION,
     settings:{apiBase:DEFAULT_API_BASE,accessToken:'',baseCurrency:'AED'},
-    holdings:[],watchlist:[],range:'1D',
+    holdings:[],watchlist:[],investmentTrades:[],range:'1D',
     lastUpdated:null,xtbImportedAt:null,okxSyncedAt:null,marketSyncedAt:null,
-    okxAccountTotalUsd:0,okxTotalPnl:null,okxTotalPnlRatio:null
+    okxAccountTotalUsd:0,okxTotalPnl:null,okxTotalPnlRatio:null,
+    okxDiagnostics:{officialTotalUsd:0,computedTotalUsd:0,differenceUsd:0,differencePct:0,tradingUsd:0,fundingUsd:0,earnUsd:0,status:'unknown',lastSync:null}
   };
   const $=id=>document.getElementById(id),$$=s=>Array.from(document.querySelectorAll(s)),clone=v=>JSON.parse(JSON.stringify(v));
   function load(){
@@ -19,8 +20,12 @@
       if(s.dataVersion!==APP_VERSION){
         s.holdings=(s.holdings||[]).filter(x=>!OLD_DEMO_IDS.has(x.id));
         s.watchlist=(s.watchlist||[]).filter(x=>!OLD_DEMO_IDS.has(x.id));
+        s.investmentTrades=Array.isArray(s.investmentTrades)?s.investmentTrades:[];
+        s.okxDiagnostics={...defaultState.okxDiagnostics,...(s.okxDiagnostics||{})};
         s.range=s.range||'1D';s.dataVersion=APP_VERSION;
       }
+      s.investmentTrades=Array.isArray(s.investmentTrades)?s.investmentTrades:[];
+      s.okxDiagnostics={...defaultState.okxDiagnostics,...(s.okxDiagnostics||{})};
       return s;
     }catch{return clone(defaultState)}
   }
@@ -70,7 +75,7 @@
     $('assetCount').textContent=state.holdings.length;$('lastUpdate').textContent=state.lastUpdated?new Date(state.lastUpdated).toLocaleTimeString('ar-AE',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';
     $('marketState').textContent=state.marketSyncedAt?'أسعار سوق محدثة':'بانتظار المزامنة';$('currencyBtn').textContent=state.settings.baseCurrency;
     $('baseCurrency').value=state.settings.baseCurrency;$('apiBase').value=state.settings.apiBase||'';$('accessToken').value=state.settings.accessToken||'';
-    renderTop();renderPortfolio();renderAllocation();renderWatch();renderAnalytics();renderConnections();renderStatus();save();
+    renderTop();renderPortfolio();renderAllocation();renderWatch();renderAnalytics();renderConnections();renderStatus();renderInvestmentLog();renderOkxDiagnostics();save();
   }
 
   function renderTop(){const a=[...state.holdings].sort((x,y)=>valueOf(y)-valueOf(x)).slice(0,5);$('topHoldings').innerHTML=a.length?a.map(h=>assetHtml(h)).join(''):'<div class="empty">لا توجد بيانات وهمية. اربط OKX أو استورد XTB.</div>'}
@@ -79,7 +84,135 @@
   function renderAllocation(){const t=totals(),s=t.total?t.stocks/t.total*100:0,c=t.total?(state.okxAccountTotalUsd||t.crypto)/t.total*100:0;$('allocationDonut').style.background=t.total?`conic-gradient(var(--gold) 0 ${s}%,#8b8b88 ${s}% ${Math.min(100,s+c)}%,#ebe7dd ${Math.min(100,s+c)}% 100%)`:'#eeeae2';$('allocationLegend').innerHTML=`<div class="legend-row"><i class="legend-dot" style="background:var(--gold)"></i><span>أسهم XTB</span><span>${s.toFixed(1)}%</span></div><div class="legend-row"><i class="legend-dot" style="background:#8b8b88"></i><span>Crypto OKX</span><span>${c.toFixed(1)}%</span></div>`}
   function renderAnalytics(){const sorted=[...state.holdings].sort((a,b)=>valueOf(b)-valueOf(a));$('analyticsCards').innerHTML=`<article class="metric-card"><span>إجمالي PnL من OKX</span><strong class="${num(state.okxTotalPnl)>=0?'positive':'negative'}">${state.okxTotalPnl===null?'—':money(state.okxTotalPnl)}</strong></article><article class="metric-card"><span>نسبة PnL</span><strong>${pct(state.okxTotalPnlRatio)}</strong></article><article class="metric-card"><span>قيمة المحفظة</span><strong>${money(totals().total)}</strong></article><article class="metric-card"><span>أكبر أصل</span><strong>${esc(sorted[0]?.symbol||'—')}</strong></article>`;const max=Math.max(1,...sorted.map(valueOf));$('largestPositions').innerHTML=sorted.length?sorted.slice(0,6).map(h=>`<div class="bar-row"><strong>${esc(h.symbol)}</strong><div class="bar-track"><div class="bar-fill" style="width:${Math.max(2,valueOf(h)/max*100)}%"></div></div><span>${money(valueOf(h))}</span></div>`).join(''):'<div class="empty">لا توجد بيانات.</div>';$('performanceList').innerHTML=state.holdings.length?state.holdings.slice(0,6).map(h=>`<div class="bar-row"><strong>${esc(h.symbol)}</strong><div class="bar-track"><div class="bar-fill ${h.pnlRatio!==null&&num(h.pnlRatio)>=0?'gain':'loss'}" style="width:${h.pnlRatio===null?0:Math.min(100,Math.max(3,Math.abs(num(h.pnlRatio))*3))}%"></div></div><span class="${h.pnlRatio!==null&&num(h.pnlRatio)>=0?'positive':'negative'}">${h.pnl!==null&&h.pnl!==undefined?`${signedMoneyUsd(h.pnl)} (${pct(h.pnlRatio)})`:pct(h.pnlRatio)}</span></div>`).join(''):'<div class="empty">لا توجد بيانات.</div>'}
   function renderConnections(){const ok=!!state.okxSyncedAt,xtb=!!state.xtbImportedAt,mkt=!!state.marketSyncedAt;setPill('okxStatus',ok?'متصل ومزامن':'غير متصل',ok);setPill('xtbStatus',xtb?'مستورد':'لم يُستورد',xtb);setPill('priceStatus',mkt?'محدثة':'بانتظار الربط',mkt);setPill('okxConnectionPill',ok?'متصل':'غير مربوط',ok);setPill('xtbConnectionPill',xtb?'مستورد':'استيراد يدوي',xtb);setPill('marketConnectionPill',mkt?'Twelve Data Live':'بانتظار TWELVE_DATA_KEY',mkt);$('xtbImportInfo').textContent=xtb?`آخر استيراد: ${new Date(state.xtbImportedAt).toLocaleString('ar-AE')}`:'لم يتم استيراد ملف بعد.'}
-  function renderStatus(){$('statusStrip').innerHTML=`<span class="dot ${state.okxSyncedAt?'live':''}"></span><span>${state.okxSyncedAt?'OKX متصل — القيمة وPnL من حسابك، والأسعار اللحظية من سوق OKX.':'لا توجد بيانات تجريبية — اربط حسابك لإظهار بياناتك.'}</span>`}
+  function renderStatus(){const d=state.okxDiagnostics||{};const mismatch=state.okxSyncedAt&&d.status==='difference';$('statusStrip').innerHTML=`<span class="dot ${state.okxSyncedAt&&!mismatch?'live':''}"></span><span>${state.okxSyncedAt?(mismatch?'OKX متصل، لكن يوجد فرق بين الإجمالي الرسمي ومجموع الأصول — راجع تشخيص OKX في تبويب الربط.':'OKX متصل — القيمة والكميات وPnL من المزامنة الخاصة، والسعر اللحظي للعرض فقط.'):'لا توجد بيانات تجريبية — اربط حسابك لإظهار بياناتك.'}</span>`}
+
+  function renderOkxDiagnostics(){
+    const box=$('okxAccuracyBox');if(!box)return;
+    const d=state.okxDiagnostics||defaultState.okxDiagnostics;
+    const synced=!!state.okxSyncedAt;
+    if(!synced){
+      box.innerHTML='<div class="empty compact-empty">تظهر تفاصيل دقة OKX بعد أول مزامنة.</div>';
+      return;
+    }
+    const diff=num(d.differenceUsd),diffPct=num(d.differencePct);
+    const good=d.status==='matched';
+    const fmt=v=>moneyUsd(num(v));
+    box.innerHTML=`
+      <div class="accuracy-head"><strong>${good?'✓ متطابق':'⚠ يوجد فرق مزامنة'}</strong><span class="pill ${good?'good':'warn'}">${good?'دقيق':'راجع التفاصيل'}</span></div>
+      <div class="accuracy-grid">
+        <div><span>إجمالي OKX الرسمي</span><strong>${fmt(d.officialTotalUsd)}</strong></div>
+        <div><span>مجموع الأصول</span><strong>${fmt(d.computedTotalUsd)}</strong></div>
+        <div><span>Trading</span><strong>${fmt(d.tradingUsd)}</strong></div>
+        <div><span>Funding</span><strong>${fmt(d.fundingUsd)}</strong></div>
+        <div><span>Earn</span><strong>${fmt(d.earnUsd)}</strong></div>
+        <div><span>الفرق</span><strong class="${Math.abs(diffPct)<=0.5?'positive':'negative'}">${diff>=0?'+':''}${fmt(diff)} · ${diffPct.toFixed(2)}%</strong></div>
+      </div>
+      <small>آخر مزامنة كاملة: ${d.lastSync?new Date(d.lastSync).toLocaleTimeString('ar-AE',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—'} · يتم التحديث تلقائيًا كل 30 ثانية أثناء فتح التطبيق.</small>`;
+  }
+
+  function ledgerData(){
+    const trades=[...(state.investmentTrades||[])].sort((a,b)=>{
+      const da=String(a.date||''),db=String(b.date||'');
+      if(da!==db)return da.localeCompare(db);
+      return num(a.createdAt)-num(b.createdAt);
+    });
+    const positions=new Map(),rows=[],sellRows=[];
+    for(const t of trades){
+      const key=`${t.type}|${String(t.symbol||'').toUpperCase()}`;
+      const p=positions.get(key)||{key,type:t.type,symbol:String(t.symbol||'').toUpperCase(),name:t.name||t.symbol,qty:0,cost:0,avgCost:0,targetPct:null,platform:t.platform||'يدوي'};
+      const qty=num(t.qty),price=num(t.price),fees=num(t.fees);
+      if(t.side==='BUY'){
+        const total=qty*price+fees;
+        p.cost+=total;p.qty+=qty;p.avgCost=p.qty>0?p.cost/p.qty:0;
+        if(t.targetPct!==null&&t.targetPct!==undefined&&String(t.targetPct)!=='')p.targetPct=num(t.targetPct);
+        rows.push({...t,realized:null,realizedPct:null,total});
+      }else{
+        const sellQty=Math.min(qty,p.qty),basis=p.avgCost*sellQty,proceeds=sellQty*price-fees;
+        const realized=proceeds-basis,realizedPct=basis>0?realized/basis*100:null;
+        p.qty=Math.max(0,p.qty-sellQty);p.cost=Math.max(0,p.cost-basis);p.avgCost=p.qty>0?p.cost/p.qty:0;
+        const row={...t,realized,realizedPct,total:proceeds,basis,sellQty};
+        rows.push(row);sellRows.push(row);
+      }
+      positions.set(key,p);
+    }
+    const open=[...positions.values()].filter(p=>p.qty>1e-12).map(p=>{
+      const h=state.holdings.find(x=>x.type===p.type&&String(x.symbol).toUpperCase()===p.symbol);
+      const live=h?num(h.marketPrice||h.price):0;
+      const value=live>0?p.qty*live:null;
+      const unrealized=value!==null?value-p.cost:null;
+      const unrealizedPct=unrealized!==null&&p.cost>0?unrealized/p.cost*100:null;
+      return{...p,live,value,unrealized,unrealizedPct};
+    });
+    return{trades,rows,positions:[...positions.values()],open,sellRows};
+  }
+
+  function renderInvestmentLog(){
+    const list=$('tradeList');if(!list)return;
+    const {rows,open,sellRows}=ledgerData();
+    const buyTotal=rows.filter(r=>r.side==='BUY').reduce((a,r)=>a+num(r.total),0);
+    const realized=sellRows.reduce((a,r)=>a+num(r.realized),0);
+    const openCost=open.reduce((a,p)=>a+num(p.cost),0);
+    const unrealizedKnown=open.filter(p=>p.unrealized!==null);
+    const unrealized=unrealizedKnown.reduce((a,p)=>a+num(p.unrealized),0);
+    const wins=sellRows.filter(r=>num(r.realized)>0).length;
+    const winRate=sellRows.length?wins/sellRows.length*100:0;
+    const set=(id,val,cls='')=>{const e=$(id);if(e){e.textContent=val;e.className=cls}};
+    set('logInvested',moneyUsd(buyTotal));
+    set('logRealized',`${realized>=0?'+':'-'}${moneyUsd(Math.abs(realized))}`,realized>=0?'positive':'negative');
+    set('logUnrealized',unrealizedKnown.length?`${unrealized>=0?'+':'-'}${moneyUsd(Math.abs(unrealized))}`:'—',unrealized>=0?'positive':'negative');
+    set('logWinRate',`${winRate.toFixed(1)}%`);
+
+    const openEl=$('openInvestmentPositions');
+    if(openEl){
+      openEl.innerHTML=open.length?open.sort((a,b)=>b.cost-a.cost).map(p=>`
+        <article class="trade-card open-position-card">
+          <div class="trade-head"><div><strong>${esc(p.name||p.symbol)}</strong><span>${esc(p.symbol)} · ${esc(p.platform||'')}</span></div><div class="trade-side buy">مفتوح</div></div>
+          <div class="trade-grid">
+            <div><span>الكمية</span><strong>${p.qty.toLocaleString('en-US',{maximumFractionDigits:8})}</strong></div>
+            <div><span>متوسط التكلفة</span><strong>${moneyUsd(p.avgCost)}</strong></div>
+            <div><span>رأس المال المتبقي</span><strong>${moneyUsd(p.cost)}</strong></div>
+            <div><span>السعر الحالي</span><strong>${p.live>0?moneyUsd(p.live):'—'}</strong></div>
+          </div>
+          <div class="trade-result ${p.unrealized===null?'':p.unrealized>=0?'positive':'negative'}">
+            غير محقق: ${p.unrealized===null?'—':`${p.unrealized>=0?'+':'-'}${moneyUsd(Math.abs(p.unrealized))} (${pct(p.unrealizedPct)})`}
+            ${p.targetPct!==null?`<small> · هدفك ${p.targetPct>=0?'+':''}${p.targetPct.toFixed(1)}%</small>`:''}
+          </div>
+        </article>`).join(''):'<div class="empty">لا توجد استثمارات مفتوحة في السجل.</div>';
+    }
+
+    const filter=$('tradeFilter')?.value||'all';
+    const visible=rows.filter(r=>filter==='all'||r.type===filter).sort((a,b)=>(String(b.date||'').localeCompare(String(a.date||'')))||num(b.createdAt)-num(a.createdAt));
+    list.innerHTML=visible.length?visible.map(r=>`
+      <article class="trade-card" data-trade-id="${esc(r.id)}">
+        <div class="trade-head">
+          <div><strong>${esc(r.name||r.symbol)}</strong><span>${esc(r.symbol)} · ${esc(r.platform||'يدوي')} · ${esc(r.date||'')}</span></div>
+          <div class="trade-side ${r.side==='BUY'?'buy':'sell'}">${r.side==='BUY'?'شراء':'بيع'}</div>
+        </div>
+        <div class="trade-grid">
+          <div><span>الكمية</span><strong>${num(r.qty).toLocaleString('en-US',{maximumFractionDigits:8})}</strong></div>
+          <div><span>سعر الوحدة</span><strong>${moneyUsd(r.price)}</strong></div>
+          <div><span>${r.side==='BUY'?'المدفوع':'صافي البيع'}</span><strong>${moneyUsd(r.total)}</strong></div>
+          <div><span>الرسوم</span><strong>${moneyUsd(r.fees)}</strong></div>
+        </div>
+        ${r.side==='SELL'?`<div class="trade-result ${num(r.realized)>=0?'positive':'negative'}">الربح المحقق: ${num(r.realized)>=0?'+':'-'}${moneyUsd(Math.abs(num(r.realized)))} (${pct(r.realizedPct)})</div>`:''}
+        ${r.note?`<p class="trade-note">${esc(r.note)}</p>`:''}
+        <button class="trade-delete" data-action="delete-trade" type="button">حذف العملية</button>
+      </article>`).join(''):'<div class="empty">لا توجد عمليات مسجلة بعد.</div>';
+  }
+
+  function availableQtyForTrade(type,symbol,beforeDate='9999-12-31'){
+    const sym=String(symbol||'').toUpperCase();
+    const {positions}=ledgerData();
+    return num(positions.find(p=>p.type===type&&p.symbol===sym)?.qty);
+  }
+
+  function updateTradePreview(){
+    const box=$('tradePreview');if(!box)return;
+    const side=$('tradeSide')?.value||'BUY',qty=parseN($('tradeQty')?.value),price=parseN($('tradePrice')?.value),fees=parseN($('tradeFees')?.value);
+    const total=side==='BUY'?qty*price+fees:Math.max(0,qty*price-fees);
+    box.textContent=side==='BUY'?`إجمالي المبلغ المدفوع: ${moneyUsd(total)}`:`صافي مبلغ البيع قبل احتساب تكلفة الشراء: ${moneyUsd(total)}`;
+  }
+
 
   async function api(path){
     const base=(state.settings.apiBase||DEFAULT_API_BASE).replace(/\/$/,'');if(!base)throw new Error('رابط الخدمة غير متوفر.');
@@ -92,8 +225,8 @@
     if(!silent)loading('syncOkxBtn',true);
     try{
       const d=await api('/api/okx/balance'),stocks=state.holdings.filter(h=>h.type==='stock');
-      const crypto=(d.holdings||[]).map(h=>({id:`okx-${h.symbol}`,type:'crypto',source:'OKX',symbol:h.symbol,name:h.name||h.symbol,qty:num(h.qty),price:num(h.price),usdValue:num(h.usdValue),pnl:h.pnl===null?null:num(h.pnl),pnlRatio:h.pnlRatio===null?null:num(h.pnlRatio),spotUpl:h.spotUpl===null?null:num(h.spotUpl),spotUplRatio:h.spotUplRatio===null?null:num(h.spotUplRatio),openAvgPx:h.openAvgPx,accAvgPx:h.accAvgPx,accountParts:h.accountParts||{}}));
-      state.holdings=[...stocks,...crypto];state.okxAccountTotalUsd=num(d.totalUsd);state.okxTotalPnl=d.totalPnl===null?null:num(d.totalPnl);state.okxTotalPnlRatio=d.totalPnlRatio===null?null:num(d.totalPnlRatio);state.okxSyncedAt=Date.now();state.lastUpdated=Date.now();render();startMarketSocket();
+      const crypto=(d.holdings||[]).map(h=>({id:`okx-${h.symbol}`,type:'crypto',source:'OKX',symbol:h.symbol,name:h.name||h.symbol,qty:num(h.qty),price:num(h.price),usdValue:num(h.usdValue),pnl:h.pnl===null?null:num(h.pnl),pnlRatio:h.pnlRatio===null?null:num(h.pnlRatio),spotUpl:h.spotUpl===null?null:num(h.spotUpl),spotUplRatio:h.spotUplRatio===null?null:num(h.spotUplRatio),openAvgPx:h.openAvgPx,accAvgPx:h.accAvgPx,accountParts:h.accountParts||{},valueParts:h.valueParts||{},valuationMode:h.valuationMode||'official',marketPrice:num(h.marketPrice||0)}));
+      state.holdings=[...stocks,...crypto];state.okxAccountTotalUsd=num(d.totalUsd);state.okxTotalPnl=d.totalPnl===null?null:num(d.totalPnl);state.okxTotalPnlRatio=d.totalPnlRatio===null?null:num(d.totalPnlRatio);state.okxSyncedAt=Date.now();state.lastUpdated=Date.now();state.okxDiagnostics={...defaultState.okxDiagnostics,...(d.diagnostics||{}),officialTotalUsd:num(d.totalUsd),computedTotalUsd:num(d.computedTotalUsd),lastSync:Date.now()};render();startMarketSocket();
       loadMainChart(state.range,true).catch(()=>{});
       if(!silent)toast(`تمت مزامنة OKX: ${crypto.length} أصل.`);
     }catch(e){if(!silent)toast(e.message||'تعذر مزامنة OKX.');throw e}
@@ -190,7 +323,7 @@
     try{
       marketWs=new WebSocket('wss://ws.okx.com:8443/ws/v5/public');
       marketWs.onopen=()=>marketWs.send(JSON.stringify({op:'subscribe',args:symbols.map(s=>({channel:'tickers',instId:`${s}-USDT`}))}));
-      marketWs.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch{return}const d=m.data?.[0];if(!d?.instId||!d.last)return;const symbol=d.instId.replace(/-USDT$/,'');const h=state.holdings.find(x=>x.type==='crypto'&&x.symbol===symbol);if(!h)return;h.price=num(d.last);if(h.accountParts){const q=num(h.accountParts.funding)+num(h.accountParts.savings);if(q>0){const trading=nested(h,'valueParts.tradingUsd');h.usdValue=trading+q*h.price}}state.lastUpdated=Date.now();render()};
+      marketWs.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch{return}const d=m.data?.[0];if(!d?.instId||!d.last)return;const symbol=d.instId.replace(/-USDT$/,'');const h=state.holdings.find(x=>x.type==='crypto'&&x.symbol===symbol);if(!h)return;h.marketPrice=num(d.last);state.marketSyncedAt=Date.now();renderInvestmentLog()};
       marketWs.onclose=()=>{wsRetry=setTimeout(startMarketSocket,5000)};
       marketWs.onerror=()=>{try{marketWs.close()}catch{}};
     }catch{}
@@ -293,13 +426,62 @@
   function parseN(v){if(typeof v==='number')return Number.isFinite(v)?v:0;const s=String(v??'').replace(/[^0-9,.\-+]/g,'').replace(/,(?=\d{3}(\D|$))/g,'').replace(',','.');const n=parseFloat(s);return Number.isFinite(n)?n:0}
   function parseNullableN(v){if(v===null||v===undefined||String(v).trim()==='')return null;const n=parseN(v);return Number.isFinite(n)?n:null}
 
+  function exportBackup(){
+    const copy=clone(state);
+    if(copy.settings)copy.settings.accessToken='';
+    const blob=new Blob([JSON.stringify({app:'Investment Hub',version:APP_VERSION,exportedAt:new Date().toISOString(),state:copy},null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download=`investment-hub-backup-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),500);
+    toast('تم إنشاء النسخة الاحتياطية.');
+  }
+
+  async function importBackup(file){
+    try{
+      const raw=JSON.parse(await file.text()),incoming=raw?.state||raw;
+      if(!incoming||!Array.isArray(incoming.holdings)||!Array.isArray(incoming.watchlist))throw new Error('ملف النسخة الاحتياطية غير صالح.');
+      const token=state.settings.accessToken;
+      state={...clone(defaultState),...incoming,settings:{...defaultState.settings,...(incoming.settings||{}),accessToken:token}};
+      state.investmentTrades=Array.isArray(incoming.investmentTrades)?incoming.investmentTrades:[];
+      state.okxDiagnostics={...defaultState.okxDiagnostics,...(incoming.okxDiagnostics||{})};
+      state.dataVersion=APP_VERSION;save();render();startPoll();toast('تمت استعادة النسخة الاحتياطية.');
+    }catch(e){toast(e.message||'تعذر استعادة النسخة الاحتياطية.')}
+    finally{if($('backupFile'))$('backupFile').value=''}
+  }
+
   // Events
   $$('.tab').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));$$('[data-go]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.go)));
+  $('openTradeDialog')?.addEventListener('click',()=>{const d=new Date();$('tradeDate').value=d.toISOString().slice(0,10);$('tradeDialog').showModal();updateTradePreview()});
+  $('closeTradeDialog')?.addEventListener('click',()=>$('tradeDialog').close());
+  ['tradeSide','tradeQty','tradePrice','tradeFees'].forEach(id=>$(id)?.addEventListener('input',updateTradePreview));
+  $('tradeFilter')?.addEventListener('change',renderInvestmentLog);
+  $('tradeForm')?.addEventListener('submit',e=>{
+    e.preventDefault();
+    const side=$('tradeSide').value,type=$('tradeType').value,symbol=$('tradeSymbol').value.trim().toUpperCase(),qty=parseN($('tradeQty').value),price=parseN($('tradePrice').value),fees=parseN($('tradeFees').value);
+    if(!symbol||qty<=0||price<=0){toast('أدخل الرمز والكمية والسعر بشكل صحيح.');return}
+    if(side==='SELL'){
+      const available=availableQtyForTrade(type,symbol);
+      if(qty>available+1e-10){toast(`الكمية المتاحة في السجل ${available.toLocaleString('en-US',{maximumFractionDigits:8})} فقط.`);return}
+    }
+    state.investmentTrades.push({
+      id:`trade-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,createdAt:Date.now(),
+      side,type,symbol,name:$('tradeName').value.trim()||symbol,platform:$('tradePlatform').value,
+      date:$('tradeDate').value,qty,price,fees,
+      targetPct:$('tradeTarget').value.trim()===''?null:parseN($('tradeTarget').value),
+      note:$('tradeNote').value.trim()
+    });
+    $('tradeForm').reset();$('tradeDialog').close();render();toast(side==='BUY'?'تم تسجيل عملية الشراء.':'تم تسجيل البيع وحساب الربح المحقق.');
+  });
+  $('tradeList')?.addEventListener('click',e=>{
+    const card=e.target.closest('[data-trade-id]');if(!card||e.target.dataset.action!=='delete-trade')return;
+    if(confirm('حذف هذه العملية من سجل الاستثمار؟')){state.investmentTrades=state.investmentTrades.filter(t=>t.id!==card.dataset.tradeId);render()}
+  });
   $$('.range').forEach(b=>b.addEventListener('click',()=>{$$('.range').forEach(x=>x.classList.remove('active'));b.classList.add('active');loadMainChart(b.dataset.range)}));
   $$('.filter').forEach(b=>b.addEventListener('click',()=>{$$('.filter').forEach(x=>x.classList.remove('active'));b.classList.add('active');renderPortfolio()}));
   $$('.asset-range').forEach(b=>b.addEventListener('click',()=>currentChartAsset&&openAssetChart(currentChartAsset,b.dataset.assetRange)));
   $('closeChartDialog').addEventListener('click',()=>$('chartDialog').close());$('currencyBtn').addEventListener('click',()=>{state.settings.baseCurrency=state.settings.baseCurrency==='AED'?'USD':'AED';render()});$('refreshBtn').addEventListener('click',()=>syncAll(false));$('syncMarketBtn').addEventListener('click',()=>syncMarket(false));$('syncOkxBtn').addEventListener('click',()=>syncOkx(false));$('diagnosticsBtn')?.addEventListener('click',runDiagnostics);$('xtbFile').addEventListener('change',e=>e.target.files[0]&&importXtb(e.target.files[0]));
   $('settingsForm').addEventListener('submit',e=>{e.preventDefault();state.settings.apiBase=$('apiBase').value.trim().replace(/\/$/,'')||DEFAULT_API_BASE;state.settings.accessToken=$('accessToken').value.trim();state.settings.baseCurrency=$('baseCurrency').value;save();render();startPoll();if(state.settings.accessToken)syncAll(true);toast('تم حفظ الإعدادات.')});
+  $('exportBtn')?.addEventListener('click',exportBackup);
+  $('backupFile')?.addEventListener('change',e=>e.target.files?.[0]&&importBackup(e.target.files[0]));
   $('watchForm').addEventListener('submit',e=>{e.preventDefault();const s=$('watchSymbol').value.trim().toUpperCase(),t=$('watchType').value;if(!s)return;state.watchlist.push({id:`watch-${t}-${s}`,type:t,symbol:s,name:s,price:0,pnl:null,pnlRatio:null});$('watchSymbol').value='';render()});
   function clickAsset(e){const item=e.target.closest('.asset-item');if(!item)return;const h=state.holdings.find(x=>x.id===item.dataset.id)||state.watchlist.find(x=>x.id===item.dataset.id);if(e.target.dataset.action==='chart'&&h){openAssetChart(h);return}if(e.target.dataset.action==='remove'){state.holdings=state.holdings.filter(x=>x.id!==item.dataset.id);render();return}item.classList.toggle('expanded')}
   $('portfolioList').addEventListener('click',clickAsset);$('topHoldings').addEventListener('click',clickAsset);$('watchList').addEventListener('click',clickAsset);
