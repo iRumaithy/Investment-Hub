@@ -10,10 +10,10 @@ export default {
     };
     if(request.method==='OPTIONS')return new Response(null,{headers:cors});
     try{
-      if(url.pathname==='/api/health')return json({ok:true,service:'investment-hub-worker',version:'2.4.1'},200,cors);
+      if(url.pathname==='/api/health')return json({ok:true,service:'investment-hub-worker',version:'2.5.0'},200,cors);
       const authError=authorize(request,env);if(authError)return json({error:authError},401,cors);
       if(url.pathname==='/api/diagnostics')return json({
-        ok:true,version:'2.4.1',
+        ok:true,version:'2.5.0',
         secrets:{
           DASHBOARD_ACCESS_TOKEN:!!env.DASHBOARD_ACCESS_TOKEN,
           OKX_API_KEY:!!env.OKX_API_KEY,
@@ -97,19 +97,26 @@ async function okxBalance(env,cors){
 
   const holdings=[...map.values()];
   for(const h of holdings){
-    const q=await cryptoQuote(h.symbol,env).catch(()=>null);
-    if(q&&q.price>0)h.price=q.price;
-    else if(STABLE.has(h.symbol)&&h.symbol!=='AED')h.price=1;
+    // Prefer the price implicit in OKX private account equity. Only assets that
+    // exist exclusively in Funding/Earn need an external fallback price.
+    let price=n(h.price),valuationMode=price>0?'okx-private':'fallback';
+    if(price<=0 && STABLE.has(h.symbol)&&h.symbol!=='AED'){price=1;valuationMode='stable'}
+    if(price<=0){
+      const q=await cryptoQuote(h.symbol,env).catch(()=>null);
+      if(q&&q.price>0){price=q.price;valuationMode='twelve-fallback'}
+      await sleep(55);
+    }
+    h.price=price;h.valuationMode=valuationMode;
 
-    const tradingUsd=n(h.valueParts.tradingUsd)>0?n(h.valueParts.tradingUsd):n(h.accountParts.trading)*n(h.price);
-    const fundingUsd=n(h.accountParts.funding)*n(h.price);
-    const savingsUsd=n(h.accountParts.savings)*n(h.price);
+    const tradingUsd=n(h.valueParts.tradingUsd)>0?n(h.valueParts.tradingUsd):n(h.accountParts.trading)*price;
+    const fundingUsd=n(h.accountParts.funding)*price;
+    const savingsUsd=n(h.accountParts.savings)*price;
     h.valueParts={tradingUsd,fundingUsd,savingsUsd};
     h.usdValue=tradingUsd+fundingUsd+savingsUsd;
   }
 
-  // Remove dust/zero entries that OKX may return as bookkeeping rows.
-  const visible=holdings.filter(h=>n(h.qty)>0 && n(h.usdValue)>=0.01);
+  // Keep every non-zero OKX balance. Unknown valuation is shown instead of silently dropping the asset.
+  const visible=holdings.filter(h=>n(h.qty)>0);
 
   const v=valuation.data?.[0]||{};
   const valuationTotalUsd=n(v.totalBal);
@@ -125,14 +132,38 @@ async function okxBalance(env,cors){
   },0);
   const totalPnlRatio=knownBasis>0?(totalPnl/knownBasis*100):null;
 
+  const details=v.details||{};
+  const pick=(...keys)=>{for(const k of keys){const x=n(details?.[k]);if(x>0)return x}return 0};
+  const computedTrading=visible.reduce((a,h)=>a+n(h.valueParts?.tradingUsd),0);
+  const computedFunding=visible.reduce((a,h)=>a+n(h.valueParts?.fundingUsd),0);
+  const computedEarn=visible.reduce((a,h)=>a+n(h.valueParts?.savingsUsd),0);
+  const tradingUsd=pick('trading','classic')||n(t.totalEq)||computedTrading;
+  const fundingUsd=pick('funding')||computedFunding;
+  const earnUsd=pick('earn')||computedEarn;
+  const differenceUsd=valuationTotalUsd>0?computedTotalUsd-valuationTotalUsd:0;
+  const differencePct=valuationTotalUsd>0?differenceUsd/valuationTotalUsd*100:0;
+  const matched=valuationTotalUsd>0?Math.abs(differencePct)<=0.5:true;
+
   return json({
     holdings:visible,
     totalUsd,
     computedTotalUsd,
     totalPnl,
     totalPnlRatio,
-    valuationDetails:v.details||{},
+    valuationDetails:details,
     okxTradingTotalEq:n(t.totalEq),
+    diagnostics:{
+      officialTotalUsd:totalUsd,
+      computedTotalUsd,
+      differenceUsd,
+      differencePct,
+      tradingUsd,
+      fundingUsd,
+      earnUsd,
+      status:matched?'matched':'difference',
+      privatePriceAssets:visible.filter(h=>h.valuationMode==='okx-private').length,
+      fallbackPriceAssets:visible.filter(h=>h.valuationMode==='twelve-fallback').length
+    },
     ts:Date.now()
   },200,cors);
 }
