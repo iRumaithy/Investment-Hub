@@ -1,0 +1,115 @@
+/* Investment Hub v2.5.3 — Obsidian / Champagne Glass visual hotfix */
+:root{
+  --ih-bg:#08090b;
+  --ih-panel:#12151a;
+  --ih-panel2:#171a20;
+  --ih-line:#2b3038;
+  --ih-text:#f5f3ed;
+  --ih-muted:#969ca5;
+  --ih-gold:#d7b86a;
+  --ih-gold2:#f0d995;
+}
+
+html{color-scheme:dark!important;background:var(--ih-bg)!important}
+body,.app-shell{background-color:var(--ih-bg)!important;color:var(--ih-text)!important}
+
+/* Fix the remaining ivory/white cards */
+.two-col>article,
+.panel,
+.connection-card,
+.settings-card,
+.danger-card,
+.hero-card,
+.metric-card,
+.asset-item,
+.trade-card,
+.dialog-card,
+.diagnostics-result{
+  background:
+    radial-gradient(circle at 95% 0%,rgba(215,184,106,.07),transparent 34%),
+    linear-gradient(155deg,#181b21 0%,#101216 100%)!important;
+  color:var(--ih-text)!important;
+  border-color:var(--ih-line)!important;
+  box-shadow:0 18px 48px rgba(0,0,0,.25)!important;
+}
+
+.two-col>article h1,.two-col>article h2,.two-col>article h3,
+.panel h1,.panel h2,.panel h3,
+.connection-card h1,.connection-card h2,.connection-card h3,
+.settings-card h1,.settings-card h2,.settings-card h3,
+.danger-card h1,.danger-card h2,.danger-card h3,
+.hero-card h1,.hero-card h2,.hero-card h3,
+.metric-card h1,.metric-card h2,.metric-card h3{
+  color:var(--ih-text)!important;
+}
+
+.two-col>article p,.two-col>article span,.two-col>article small,
+.panel p,.panel span,.panel small,
+.connection-card p,.connection-card span,.connection-card small,
+.settings-card p,.settings-card span,.settings-card small,
+.danger-card p,.danger-card span,.danger-card small,
+.metric-card p,.metric-card span,.metric-card small{
+  color:var(--ih-muted)!important;
+}
+
+/* Portfolio allocation */
+.donut:after{background:#111419!important}
+.legend-row{color:var(--ih-text)!important}
+.legend-row span{color:#b4b8c0!important}
+
+/* Empty states inside analytics/cards */
+.empty,.empty-state,.no-data{
+  background:#0c0e12!important;
+  color:#8f959f!important;
+  border-color:#343a44!important;
+}
+.empty *,.empty-state *,.no-data *{color:#8f959f!important}
+
+/* Charts / analysis */
+.bar-track{background:#252a32!important}
+.chart-source,.muted{color:var(--ih-muted)!important}
+.bar-row{color:var(--ih-text)!important}
+
+/* Inputs and controls */
+input,select,textarea,.compact-select{
+  background:#0d1014!important;
+  border-color:#2e333d!important;
+  color:var(--ih-text)!important;
+}
+input::placeholder,textarea::placeholder{color:#676e78!important}
+
+/* Inactive navigation should no longer be bright white */
+.tab{
+  background:#14171c!important;
+  color:#a6abb3!important;
+  border-color:#2b3038!important;
+}
+.tab.active{
+  background:linear-gradient(145deg,var(--ih-gold2),#aa8840)!important;
+  color:#08090b!important;
+  border-color:#c9a85b!important;
+}
+
+/* Secondary controls */
+.icon-btn,.currency-btn,.secondary-btn,.file-btn,.asset-action,.filter{
+  background:#15181e!important;
+  color:#d7d9de!important;
+  border-color:#303640!important;
+}
+.currency-btn,.text-btn{color:#e1c77c!important}
+.filter.active,.range.active{
+  background:rgba(215,184,106,.18)!important;
+  color:#ead394!important;
+}
+
+/* Ensure card titles remain readable */
+.section-head h2,.panel h3,.brand,.hero-value,.metric-card strong,.asset-title strong{
+  color:var(--ih-text)!important;
+}
+
+/* Mobile polish */
+@media(max-width:600px){
+  .two-col>article,.panel,.hero-card,.metric-card,.connection-card{
+    border-radius:20px!important;
+  }
+}
