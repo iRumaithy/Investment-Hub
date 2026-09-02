@@ -135,7 +135,7 @@
 
         <section class="section-block">
           <div class="section-head compact">
-            <div><p class="eyebrow">History</p><h2>سجل العمليات</h2></div>
+            <div><p class="eyebrow">History</p><h2>History · سجل العمليات</h2></div>
             <select id="tradeFilter" class="compact-select" aria-label="تصفية سجل الاستثمار">
               <option value="all">الكل</option><option value="stock">الأسهم</option><option value="crypto">Crypto</option>
             </select>
@@ -237,40 +237,34 @@
       </section>
     </main>
 
-    <footer><span>محفظتي Investment Hub</span><span>v2.5.0</span></footer>
+    <footer><span>محفظتي Investment Hub</span><span>v2.5.1</span></footer>
   </div>
 
 
   <dialog id="tradeDialog">
-    <form id="tradeForm" method="dialog" class="dialog-card">
-      <div class="dialog-head"><h3>تسجيل عملية استثمار</h3><button id="closeTradeDialog" type="button" class="icon-btn">×</button></div>
-      <div class="form-grid">
-        <label>العملية<select id="tradeSide"><option value="BUY">شراء</option><option value="SELL">بيع</option></select></label>
-        <label>النوع<select id="tradeType"><option value="crypto">Crypto</option><option value="stock">سهم</option></select></label>
+    <form id="tradeForm" method="dialog" class="dialog-card trade-dialog-card">
+      <div class="dialog-head"><div><p class="eyebrow">Investment Journal</p><h3>تسجيل عملية استثمار</h3></div><button id="closeTradeDialog" type="button" class="icon-btn">×</button></div>
+      <div class="trade-mode-switch" role="group" aria-label="نوع العملية"><button id="buyModeBtn" type="button" class="trade-mode active" data-side="BUY">شراء</button><button id="sellModeBtn" type="button" class="trade-mode" data-side="SELL">بيع</button></div>
+      <input id="tradeSide" type="hidden" value="BUY" />
+      <div id="buyFields">
+        <div class="form-grid"><label>النوع<select id="tradeType"><option value="crypto">Crypto</option><option value="stock">سهم</option></select></label><label>المنصة<select id="tradePlatform"><option>OKX</option><option>XTB</option><option>Binance</option><option>يدوي</option><option>أخرى</option></select></label></div>
+        <div class="form-grid"><label>الرمز<input id="tradeSymbol" maxlength="20" placeholder="BTC أو AAPL" /></label><label>الاسم<input id="tradeName" maxlength="60" placeholder="Bitcoin أو Apple" /></label></div>
       </div>
-      <div class="form-grid">
-        <label>الرمز<input id="tradeSymbol" required maxlength="20" placeholder="BTC أو AAPL" /></label>
-        <label>الاسم<input id="tradeName" maxlength="60" placeholder="Bitcoin أو Apple" /></label>
+      <div id="sellFields" hidden>
+        <label>اختر الاستثمار المفتوح<select id="sellPositionSelect"></select></label>
+        <div id="sellPositionInfo" class="sell-position-info"></div>
+        <div class="sell-qty-actions"><button id="sell25Btn" type="button">25%</button><button id="sell50Btn" type="button">50%</button><button id="sell75Btn" type="button">75%</button><button id="sellAllBtn" type="button">الكل</button></div>
       </div>
-      <div class="form-grid">
-        <label>المنصة<select id="tradePlatform"><option>OKX</option><option>XTB</option><option>Binance</option><option>يدوي</option><option>أخرى</option></select></label>
-        <label>التاريخ<input id="tradeDate" required type="date" /></label>
-      </div>
-      <div class="form-grid">
-        <label>الكمية<input id="tradeQty" required type="number" min="0" step="any" /></label>
-        <label>سعر الوحدة USD<input id="tradePrice" required type="number" min="0" step="any" /></label>
-      </div>
-      <div class="form-grid">
-        <label>الرسوم USD<input id="tradeFees" type="number" min="0" step="any" value="0" /></label>
-        <label>هدف الربح % <small>اختياري للشراء</small><input id="tradeTarget" type="number" step="any" placeholder="20" /></label>
-      </div>
-      <div id="tradePreview" class="trade-preview">—</div>
+      <div class="form-grid"><label>التاريخ<input id="tradeDate" required type="date" /></label><label>الكمية<input id="tradeQty" required type="number" min="0" step="any" /></label></div>
+      <div class="form-grid"><label>سعر الوحدة USD<input id="tradePrice" required type="number" min="0" step="any" /></label><label>الرسوم USD<input id="tradeFees" type="number" min="0" step="any" value="0" /></label></div>
+      <label id="targetLabel">هدف الربح % <small>اختياري للشراء</small><input id="tradeTarget" type="number" step="any" placeholder="20" /></label>
+      <div id="tradePreview" class="trade-preview preview-panel">—</div>
       <label>ملاحظات<textarea id="tradeNote" rows="3" maxlength="400" placeholder="سبب الشراء، الخطة، سبب البيع..."></textarea></label>
       <button class="primary-btn wide" type="submit">حفظ العملية</button>
     </form>
   </dialog>
 
-  <dialog id="assetDialog">
+<dialog id="assetDialog">
     <form id="assetForm" method="dialog" class="dialog-card">
       <div class="dialog-head"><h3>إضافة أصل</h3><button id="closeAssetDialog" type="button" class="icon-btn">×</button></div>
       <label>النوع<select id="assetType"><option value="stock">سهم</option><option value="crypto">Crypto</option></select></label>

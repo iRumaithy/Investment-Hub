@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const AED_RATE=3.6725,STORAGE_KEY='investmentHub_v1',APP_VERSION='2.5.0';
+  const AED_RATE=3.6725,STORAGE_KEY='investmentHub_v1',APP_VERSION='2.5.1';
   const DEFAULT_API_BASE=/^https?:$/.test(location.protocol)?location.origin:'';
   const OLD_DEMO_IDS=new Set(['s1','s2','s3','c1','c2','c3','w1','w2']);
   const POLL_MS=30000;
@@ -200,18 +200,13 @@
       </article>`).join(''):'<div class="empty">لا توجد عمليات مسجلة بعد.</div>';
   }
 
-  function availableQtyForTrade(type,symbol,beforeDate='9999-12-31'){
-    const sym=String(symbol||'').toUpperCase();
-    const {positions}=ledgerData();
-    return num(positions.find(p=>p.type===type&&p.symbol===sym)?.qty);
-  }
-
-  function updateTradePreview(){
-    const box=$('tradePreview');if(!box)return;
-    const side=$('tradeSide')?.value||'BUY',qty=parseN($('tradeQty')?.value),price=parseN($('tradePrice')?.value),fees=parseN($('tradeFees')?.value);
-    const total=side==='BUY'?qty*price+fees:Math.max(0,qty*price-fees);
-    box.textContent=side==='BUY'?`إجمالي المبلغ المدفوع: ${moneyUsd(total)}`:`صافي مبلغ البيع قبل احتساب تكلفة الشراء: ${moneyUsd(total)}`;
-  }
+  function openLedgerPositions(){return ledgerData().open.sort((a,b)=>b.cost-a.cost)}
+  function selectedOpenPosition(){const key=$('sellPositionSelect')?.value||'';return openLedgerPositions().find(p=>p.key===key)||null}
+  function refreshSellPositions(){const sel=$('sellPositionSelect');if(!sel)return;const open=openLedgerPositions(),current=sel.value;sel.innerHTML=open.length?open.map(p=>`<option value="${esc(p.key)}">${esc(p.symbol)} — المتبقي ${p.qty.toLocaleString('en-US',{maximumFractionDigits:8})} — متوسط ${moneyUsd(p.avgCost)}</option>`).join(''):'<option value="">لا توجد صفقات مفتوحة</option>';if(open.some(p=>p.key===current))sel.value=current;updateSellPositionInfo()}
+  function updateSellPositionInfo(){const p=selectedOpenPosition(),box=$('sellPositionInfo');if(!box)return;if(!p){box.innerHTML='<div class="empty compact-empty">لا توجد صفقة مفتوحة متاحة للبيع.</div>';return}box.innerHTML=`<div><span>الأصل</span><strong>${esc(p.name||p.symbol)} · ${esc(p.symbol)}</strong></div><div><span>المنصة</span><strong>${esc(p.platform||'يدوي')}</strong></div><div><span>الكمية المتبقية</span><strong>${p.qty.toLocaleString('en-US',{maximumFractionDigits:8})}</strong></div><div><span>متوسط سعر الشراء</span><strong>${moneyUsd(p.avgCost)}</strong></div><div><span>التكلفة المتبقية</span><strong>${moneyUsd(p.cost)}</strong></div><div><span>السعر الحالي</span><strong>${p.live>0?moneyUsd(p.live):'—'}</strong></div>`}
+  function setTradeMode(side){const isSell=side==='SELL';$('tradeSide').value=side;$('buyFields').hidden=isSell;$('sellFields').hidden=!isSell;$('targetLabel').hidden=isSell;$('buyModeBtn').classList.toggle('active',!isSell);$('sellModeBtn').classList.toggle('active',isSell);if(isSell){refreshSellPositions();const p=selectedOpenPosition();if(p){$('tradeType').value=p.type;$('tradeSymbol').value=p.symbol;$('tradeName').value=p.name||p.symbol;$('tradePlatform').value=[...$('tradePlatform').options].some(o=>o.value===p.platform)?p.platform:'يدوي';if(p.live>0)$('tradePrice').value=p.live}}updateTradePreview()}
+  function fillSellFraction(fraction){const p=selectedOpenPosition();if(!p)return;$('tradeQty').value=(p.qty*fraction).toFixed(8).replace(/0+$/,'').replace(/\.$/,'');updateTradePreview()}
+  function updateTradePreview(){const box=$('tradePreview');if(!box)return;const side=$('tradeSide')?.value||'BUY',qty=parseN($('tradeQty')?.value),price=parseN($('tradePrice')?.value),fees=parseN($('tradeFees')?.value);if(side==='BUY'){const total=qty*price+fees;box.innerHTML=`<div class="preview-title">معاينة الشراء</div><div class="preview-main">${moneyUsd(total)}</div><small>إجمالي المبلغ المدفوع شامل الرسوم</small>`;return}const p=selectedOpenPosition();if(!p){box.innerHTML='<div class="preview-title">معاينة البيع</div><small>اختر صفقة مفتوحة أولًا.</small>';return}const sellQty=Math.min(qty,p.qty),basis=p.avgCost*sellQty,proceeds=Math.max(0,sellQty*price-fees),realized=proceeds-basis,realizedPct=basis>0?realized/basis*100:0;box.innerHTML=`<div class="preview-title">معاينة البيع</div><div class="preview-grid"><div><span>صافي البيع</span><strong>${moneyUsd(proceeds)}</strong></div><div><span>تكلفة الكمية المباعة</span><strong>${moneyUsd(basis)}</strong></div><div><span>الربح المتوقع</span><strong class="${realized>=0?'positive':'negative'}">${realized>=0?'+':'-'}${moneyUsd(Math.abs(realized))}</strong></div><div><span>العائد</span><strong class="${realizedPct>=0?'positive':'negative'}">${pct(realizedPct)}</strong></div></div><small>${sellQty>=p.qty-1e-10?'سيتم إغلاق الصفقة بالكامل ونقلها إلى History.':`سيبقى ${(p.qty-sellQty).toLocaleString('en-US',{maximumFractionDigits:8})} من الأصل مفتوحًا.`}</small>`}
 
 
   async function api(path){
@@ -450,31 +445,19 @@
 
   // Events
   $$('.tab').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));$$('[data-go]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.go)));
-  $('openTradeDialog')?.addEventListener('click',()=>{const d=new Date();$('tradeDate').value=d.toISOString().slice(0,10);$('tradeDialog').showModal();updateTradePreview()});
+  $('openTradeDialog')?.addEventListener('click',()=>{const d=new Date();$('tradeDate').value=d.toISOString().slice(0,10);$('tradeForm').reset();$('tradeFees').value='0';setTradeMode('BUY');$('tradeDialog').showModal();updateTradePreview()});
   $('closeTradeDialog')?.addEventListener('click',()=>$('tradeDialog').close());
-  ['tradeSide','tradeQty','tradePrice','tradeFees'].forEach(id=>$(id)?.addEventListener('input',updateTradePreview));
+  $('buyModeBtn')?.addEventListener('click',()=>setTradeMode('BUY'));
+  $('sellModeBtn')?.addEventListener('click',()=>setTradeMode('SELL'));
+  $('sellPositionSelect')?.addEventListener('change',()=>{const p=selectedOpenPosition();if(p){$('tradeType').value=p.type;$('tradeSymbol').value=p.symbol;$('tradeName').value=p.name||p.symbol;$('tradePlatform').value=[...$('tradePlatform').options].some(o=>o.value===p.platform)?p.platform:'يدوي';if(p.live>0)$('tradePrice').value=p.live}updateSellPositionInfo();updateTradePreview()});
+  $('sell25Btn')?.addEventListener('click',()=>fillSellFraction(.25));
+  $('sell50Btn')?.addEventListener('click',()=>fillSellFraction(.50));
+  $('sell75Btn')?.addEventListener('click',()=>fillSellFraction(.75));
+  $('sellAllBtn')?.addEventListener('click',()=>fillSellFraction(1));
+  ['tradeQty','tradePrice','tradeFees'].forEach(id=>$(id)?.addEventListener('input',updateTradePreview));
   $('tradeFilter')?.addEventListener('change',renderInvestmentLog);
-  $('tradeForm')?.addEventListener('submit',e=>{
-    e.preventDefault();
-    const side=$('tradeSide').value,type=$('tradeType').value,symbol=$('tradeSymbol').value.trim().toUpperCase(),qty=parseN($('tradeQty').value),price=parseN($('tradePrice').value),fees=parseN($('tradeFees').value);
-    if(!symbol||qty<=0||price<=0){toast('أدخل الرمز والكمية والسعر بشكل صحيح.');return}
-    if(side==='SELL'){
-      const available=availableQtyForTrade(type,symbol);
-      if(qty>available+1e-10){toast(`الكمية المتاحة في السجل ${available.toLocaleString('en-US',{maximumFractionDigits:8})} فقط.`);return}
-    }
-    state.investmentTrades.push({
-      id:`trade-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,createdAt:Date.now(),
-      side,type,symbol,name:$('tradeName').value.trim()||symbol,platform:$('tradePlatform').value,
-      date:$('tradeDate').value,qty,price,fees,
-      targetPct:$('tradeTarget').value.trim()===''?null:parseN($('tradeTarget').value),
-      note:$('tradeNote').value.trim()
-    });
-    $('tradeForm').reset();$('tradeDialog').close();render();toast(side==='BUY'?'تم تسجيل عملية الشراء.':'تم تسجيل البيع وحساب الربح المحقق.');
-  });
-  $('tradeList')?.addEventListener('click',e=>{
-    const card=e.target.closest('[data-trade-id]');if(!card||e.target.dataset.action!=='delete-trade')return;
-    if(confirm('حذف هذه العملية من سجل الاستثمار؟')){state.investmentTrades=state.investmentTrades.filter(t=>t.id!==card.dataset.tradeId);render()}
-  });
+  $('tradeForm')?.addEventListener('submit',e=>{e.preventDefault();const side=$('tradeSide').value;let type=$('tradeType').value,symbol=$('tradeSymbol').value.trim().toUpperCase(),name=$('tradeName').value.trim(),platform=$('tradePlatform').value;const qty=parseN($('tradeQty').value),price=parseN($('tradePrice').value),fees=parseN($('tradeFees').value);if(side==='SELL'){const p=selectedOpenPosition();if(!p){toast('اختر صفقة مفتوحة أولًا.');return}type=p.type;symbol=p.symbol;name=p.name||p.symbol;platform=p.platform||'يدوي';if(qty>p.qty+1e-10){toast(`الكمية المتاحة ${p.qty.toLocaleString('en-US',{maximumFractionDigits:8})} فقط.`);return}}if(!symbol||qty<=0||price<=0){toast('أدخل الكمية والسعر بشكل صحيح.');return}state.investmentTrades.push({id:`trade-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,createdAt:Date.now(),side,type,symbol,name:name||symbol,platform,date:$('tradeDate').value,qty,price,fees,targetPct:side==='BUY'&&$('tradeTarget').value.trim()!==''?parseN($('tradeTarget').value):null,note:$('tradeNote').value.trim()});$('tradeForm').reset();$('tradeDialog').close();render();toast(side==='BUY'?'تم تسجيل عملية الشراء.':'تم تسجيل البيع وحساب الربح المحقق.')});
+  $('tradeList')?.addEventListener('click',e=>{const card=e.target.closest('[data-trade-id]');if(!card||e.target.dataset.action!=='delete-trade')return;if(confirm('حذف هذه العملية من سجل الاستثمار؟')){state.investmentTrades=state.investmentTrades.filter(t=>t.id!==card.dataset.tradeId);render()}});
   $$('.range').forEach(b=>b.addEventListener('click',()=>{$$('.range').forEach(x=>x.classList.remove('active'));b.classList.add('active');loadMainChart(b.dataset.range)}));
   $$('.filter').forEach(b=>b.addEventListener('click',()=>{$$('.filter').forEach(x=>x.classList.remove('active'));b.classList.add('active');renderPortfolio()}));
   $$('.asset-range').forEach(b=>b.addEventListener('click',()=>currentChartAsset&&openAssetChart(currentChartAsset,b.dataset.assetRange)));
